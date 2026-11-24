@@ -4,20 +4,15 @@ import {
   Gauge,
   Globe,
   Moon,
-  Smartphone,
   Sun,
   Volume2,
   Waves,
 } from 'lucide-react';
-import {
-  CefrLevel,
-  UiLanguage,
-  UserProfileData,
-} from '../types/learning';
-import { CEFR_ORDER, LEVEL_META } from '../data/curriculum';
+import { CefrLevel, UserProfileData } from '../types/learning';
+import { CEFR_ORDER } from '../data/curriculum';
+import { getUi, LANGUAGE_OPTIONS } from '../lib/i18n';
 import { soundEngine, VOICE_SPEED_OPTIONS } from '../lib/sound';
 import { LevelBadgeArt } from './LevelBadgeArt';
-import { PWAInstallButton } from './PwaControls';
 
 interface SettingsViewProps {
   profile: UserProfileData;
@@ -26,36 +21,33 @@ interface SettingsViewProps {
 
 const DAILY_GOALS = [20, 50, 100, 150];
 
-const LANGUAGES: { code: UiLanguage; label: string; native: string }[] = [
-  { code: 'ar', label: 'العربية', native: 'الواجهة والترجمة العربية' },
-  { code: 'en', label: 'English', native: 'غامر بالإنجليزية بالكامل' },
-  { code: 'es', label: 'الإسبانية', native: 'Español' },
-  { code: 'fr', label: 'الفرنسية', native: 'Français' },
-];
-
 export function SettingsView({
   profile,
   onUpdatePreferences,
 }: SettingsViewProps) {
+  const t = getUi(profile.uiLanguage);
+  const s = t.settings;
+  const isRtl = profile.uiLanguage === 'ar';
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* العنوان */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
         <div>
           <h1 className="font-display font-black text-2xl sm:text-3xl text-[var(--text-primary)] tracking-tight">
-            إعدادات التعلم والصوت
+            {s.title}
           </h1>
           <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">
-            اضبط هدفك اليومي والمستوى الافتراضي والمؤثرات الصوتية الهادئة وسرعة النطق والمظهر
+            {s.subtitle}
           </p>
         </div>
       </div>
 
-      {/* شبكة الإعدادات */}
+      {/* Settings Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* العمود الأساسي: الصوت وخطة الدراسة */}
+        {/* Primary Column: Audio & Study Plan */}
         <div className="lg:col-span-7 space-y-6">
-          {/* استوديو الصوت والنطق */}
+          {/* Audio & Pronunciation Studio */}
           <section className="rounded-[28px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 shadow-sm space-y-5">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2.5">
@@ -63,7 +55,7 @@ export function SettingsView({
                   <Gauge className="w-5 h-5" />
                 </div>
                 <h2 className="font-display font-black text-lg text-[var(--text-primary)]">
-                  استوديو الصوت والنطق
+                  {s.audioStudioTitle}
                 </h2>
               </div>
 
@@ -73,7 +65,7 @@ export function SettingsView({
                   onClick={() => soundEngine.playCorrect(true, 2)}
                   className="px-3 py-1.5 rounded-xl bg-[var(--bg-surface-muted)] hover:bg-[#58CC02]/15 text-xs font-extrabold text-[#58CC02] cursor-pointer transition-colors"
                 >
-                  تجربة النغمة
+                  {s.testChimeBtn}
                 </button>
                 <button
                   type="button"
@@ -86,18 +78,19 @@ export function SettingsView({
                   }
                   className="px-3 py-1.5 rounded-xl bg-[var(--bg-surface-muted)] hover:bg-[#1CB0F6]/15 text-xs font-extrabold text-[#1CB0F6] cursor-pointer transition-colors"
                 >
-                  تجربة الصوت ({profile.voiceSpeed}x)
+                  {s.testVoiceBtn(profile.voiceSpeed)}
                 </button>
               </div>
             </div>
 
             <div className="space-y-2">
               <label className="block text-xs font-bold text-[var(--text-secondary)]">
-                سرعة نطق الكلمات
+                {s.voiceSpeedLabel}
               </label>
               <div className="grid grid-cols-4 gap-2">
                 {VOICE_SPEED_OPTIONS.map((opt) => {
                   const active = Math.abs(profile.voiceSpeed - opt.value) < 0.05;
+                  const speedTag = s.speedTags[String(opt.value)] || opt.tag;
                   return (
                     <button
                       key={opt.value}
@@ -121,7 +114,7 @@ export function SettingsView({
                         {opt.label}
                       </div>
                       <div className="text-[11px] font-bold text-[var(--text-secondary)]">
-                        {opt.tag}
+                        {speedTag}
                       </div>
                     </button>
                   );
@@ -132,8 +125,8 @@ export function SettingsView({
             <div className="divide-y divide-[var(--border-subtle)]">
               <ToggleRow
                 icon={<Waves className="w-5 h-5 text-[#58CC02]" />}
-                title="مؤثرات صوتية هادئة"
-                description="نغمات ناعمة ومريحة عند الإجابات وقلب البطاقات والمكافآت"
+                title={s.calmSfxTitle}
+                description={s.calmSfxDesc}
                 checked={profile.soundEnabled}
                 onToggle={(next) => {
                   if (next) soundEngine.playCorrect(true, 1);
@@ -142,8 +135,8 @@ export function SettingsView({
               />
               <ToggleRow
                 icon={<Volume2 className="w-5 h-5 text-[#1CB0F6]" />}
-                title="النطق التلقائي للمفردات"
-                description="تشغيل نطق الكلمة الإنجليزية تلقائياً عند ظهور بطاقات التعلم"
+                title={s.autoSpeakTitle}
+                description={s.autoSpeakDesc}
                 checked={profile.voiceEnabled}
                 onToggle={(next) => {
                   soundEngine.playClick(profile.soundEnabled);
@@ -153,15 +146,15 @@ export function SettingsView({
             </div>
           </section>
 
-          {/* خطة الدراسة والمستوى الافتراضي */}
+          {/* Study Plan & Default Level */}
           <section className="rounded-[28px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 shadow-sm space-y-5">
             <h2 className="font-display font-black text-lg text-[var(--text-primary)]">
-              خطة الدراسة والمستوى
+              {s.studyPlanTitle}
             </h2>
 
             <div>
               <label className="block text-xs font-bold text-[var(--text-secondary)] mb-2">
-                الهدف اليومي لنقاط الخبرة
+                {s.dailyGoalXpLabel}
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 {DAILY_GOALS.map((goal) => {
@@ -190,7 +183,7 @@ export function SettingsView({
 
             <div>
               <label className="block text-xs font-bold text-[var(--text-secondary)] mb-2">
-                المستوى الافتراضي
+                {s.defaultLevelLabel}
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                 {CEFR_ORDER.map((lvl: CefrLevel) => {
@@ -203,7 +196,9 @@ export function SettingsView({
                         soundEngine.playClick(profile.soundEnabled);
                         onUpdatePreferences({ difficulty: lvl });
                       }}
-                      className={`p-2.5 rounded-2xl border-2 flex items-center gap-2.5 text-right transition-all cursor-pointer ${
+                      className={`p-2.5 rounded-2xl border-2 flex items-center gap-2.5 ${
+                        isRtl ? 'text-right' : 'text-left'
+                      } transition-all cursor-pointer ${
                         active
                           ? 'bg-[#1CB0F6]/12 border-[#1CB0F6] text-[#0c87c4] dark:text-[#57C9FF]'
                           : 'bg-[var(--bg-surface-muted)] border-transparent text-[var(--text-primary)] hover:border-slate-300 dark:hover:border-slate-600'
@@ -211,11 +206,11 @@ export function SettingsView({
                     >
                       <LevelBadgeArt level={lvl} size="sm" />
                       <div className="min-w-0">
-                        <div dir="ltr" className="font-display font-black text-sm leading-none text-right">
+                        <div dir="ltr" className="font-display font-black text-sm leading-none">
                           {lvl}
                         </div>
                         <div className="text-[11px] font-bold text-[var(--text-secondary)] truncate mt-0.5">
-                          {LEVEL_META[lvl].title}
+                          {t.levels[lvl].title}
                         </div>
                       </div>
                     </button>
@@ -226,11 +221,11 @@ export function SettingsView({
           </section>
         </div>
 
-        {/* العمود الثانوي: المظهر واللغة وتطبيق الويب */}
+        {/* Secondary Column: Appearance & Language */}
         <div className="lg:col-span-5 space-y-6">
           <section className="rounded-[28px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 shadow-sm space-y-5">
             <h2 className="font-display font-black text-lg text-[var(--text-primary)]">
-              المظهر والتنبيهات
+              {s.appearanceTitle}
             </h2>
 
             <div className="grid grid-cols-2 gap-3">
@@ -240,7 +235,9 @@ export function SettingsView({
                   soundEngine.playClick(profile.soundEnabled);
                   onUpdatePreferences({ darkMode: false });
                 }}
-                className={`rounded-2xl p-3.5 text-right border-2 transition-all cursor-pointer ${
+                className={`rounded-2xl p-3.5 ${
+                  isRtl ? 'text-right' : 'text-left'
+                } border-2 transition-all cursor-pointer ${
                   !profile.darkMode
                     ? 'border-[#58CC02] bg-[#58CC02]/8'
                     : 'border-[var(--border-subtle)] bg-[var(--bg-surface-muted)]'
@@ -251,7 +248,7 @@ export function SettingsView({
                   <div className="h-2 w-10 rounded-full bg-slate-300" />
                 </div>
                 <div className="font-display font-extrabold text-xs text-[var(--text-primary)] flex items-center justify-between">
-                  <span>الوضع النهاري</span>
+                  <span>{s.lightMode}</span>
                   {!profile.darkMode && <Check className="w-4 h-4 text-[#58CC02]" />}
                 </div>
               </button>
@@ -262,7 +259,9 @@ export function SettingsView({
                   soundEngine.playClick(profile.soundEnabled);
                   onUpdatePreferences({ darkMode: true });
                 }}
-                className={`rounded-2xl p-3.5 text-right border-2 transition-all cursor-pointer ${
+                className={`rounded-2xl p-3.5 ${
+                  isRtl ? 'text-right' : 'text-left'
+                } border-2 transition-all cursor-pointer ${
                   profile.darkMode
                     ? 'border-[#1CB0F6] bg-[#1CB0F6]/10'
                     : 'border-[var(--border-subtle)] bg-[var(--bg-surface-muted)]'
@@ -273,7 +272,7 @@ export function SettingsView({
                   <div className="h-2 w-10 rounded-full bg-slate-600" />
                 </div>
                 <div className="font-display font-extrabold text-xs text-[var(--text-primary)] flex items-center justify-between">
-                  <span>الوضع الليلي</span>
+                  <span>{s.darkMode}</span>
                   {profile.darkMode && <Check className="w-4 h-4 text-[#1CB0F6]" />}
                 </div>
               </button>
@@ -282,8 +281,8 @@ export function SettingsView({
             <div className="pt-1 border-t border-[var(--border-subtle)]">
               <ToggleRow
                 icon={<Bell className="w-5 h-5 text-[#FF9600]" />}
-                title="تذكير الممارسة اليومية"
-                description="تنبيهات لطيفة للحفاظ على سلسلة أيام التعلم"
+                title={s.remindersTitle}
+                description={s.remindersDesc}
                 checked={profile.notificationsEnabled}
                 onToggle={(next) => {
                   soundEngine.playClick(profile.soundEnabled);
@@ -294,15 +293,18 @@ export function SettingsView({
           </section>
 
           <section className="rounded-[28px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2">
-              <Globe className="w-5 h-5 text-[#1CB0F6]" />
-              <h2 className="font-display font-black text-lg text-[var(--text-primary)]">
-                لغة الواجهة والترجمة
-              </h2>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Globe className="w-5 h-5 text-[#1CB0F6]" />
+                <h2 className="font-display font-black text-lg text-[var(--text-primary)]">
+                  {s.languageTitle}
+                </h2>
+              </div>
+              <p className="text-xs text-[var(--text-secondary)]">{s.languageSub}</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              {LANGUAGES.map((lang) => {
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {LANGUAGE_OPTIONS.map((lang) => {
                 const active = profile.uiLanguage === lang.code;
                 return (
                   <button
@@ -312,37 +314,27 @@ export function SettingsView({
                       soundEngine.playClick(profile.soundEnabled);
                       onUpdatePreferences({ uiLanguage: lang.code });
                     }}
-                    className={`rounded-2xl p-3 text-right border-2 transition-all cursor-pointer flex items-center justify-between ${
+                    className={`rounded-2xl p-3.5 ${
+                      isRtl ? 'text-right' : 'text-left'
+                    } border-2 transition-all cursor-pointer flex items-center justify-between gap-2 ${
                       active
                         ? 'bg-[#1CB0F6]/10 border-[#1CB0F6]'
                         : 'bg-[var(--bg-surface-muted)] border-transparent hover:border-[var(--border-subtle)]'
                     }`}
                   >
-                    <div>
-                      <div className="font-display font-extrabold text-xs text-[var(--text-primary)]">
+                    <div className="min-w-0">
+                      <div className="font-display font-extrabold text-sm text-[var(--text-primary)]">
                         {lang.label}
                       </div>
-                      <div className="text-[11px] text-[var(--text-secondary)]">{lang.native}</div>
+                      <div className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
+                        {lang.subtitle[profile.uiLanguage]}
+                      </div>
                     </div>
                     {active && <Check className="w-4 h-4 text-[#1CB0F6] shrink-0" />}
                   </button>
                 );
               })}
             </div>
-          </section>
-
-          {/* تثبيت التطبيق / PWA */}
-          <section className="rounded-[28px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 shadow-sm space-y-3">
-            <div className="flex items-center gap-2">
-              <Smartphone className="w-5 h-5 text-[#58CC02]" />
-              <h2 className="font-display font-black text-lg text-[var(--text-primary)]">
-                وضع التطبيق المستقل
-              </h2>
-            </div>
-            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              ثبّت LingoLearn على شاشتك الرئيسية لتشغيله بملء الشاشة دون شريط المتصفح والتدرب دون إنترنت.
-            </p>
-            <PWAInstallButton />
           </section>
         </div>
       </div>

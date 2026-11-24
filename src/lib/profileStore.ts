@@ -1,4 +1,5 @@
 import { CefrLevel, UserProfileData, WeeklyXpMap } from '../types/learning';
+import { getRandomAvatarId } from '../components/avatarOptions';
 
 const LOCAL_STORAGE_KEY = 'lingofox_learner_profile_v2';
 
@@ -14,14 +15,15 @@ export function getTodayWeekdayKey(): keyof WeeklyXpMap {
 export function createDefaultProfile(
   uid = 'guest',
   username = 'learner',
-  displayName = 'Learner'
+  displayName = 'Learner',
+  options?: { randomizeAvatar?: boolean }
 ): UserProfileData {
   return {
     uid,
     username: username.slice(0, 20) || 'learner',
     displayName: displayName.slice(0, 80) || 'Learner',
     email: '',
-    avatarId: 'app-crest',
+    avatarId: options?.randomizeAvatar ? getRandomAvatarId() : 'app-crest',
     customAvatarUrl: undefined,
     xp: 0,
     streak: 1,
@@ -64,7 +66,10 @@ export function loadLocalProfile(): UserProfileData {
     return {
       ...base,
       ...parsed,
-      avatarId: parsed.avatarId === 'pip-fox' || !parsed.avatarId ? 'app-crest' : parsed.avatarId,
+      avatarId:
+        parsed.avatarId === 'pip-fox' || !parsed.avatarId
+          ? getRandomAvatarId()
+          : parsed.avatarId,
       voiceSpeed:
         typeof parsed.voiceSpeed === 'number'
           ? Math.max(0.5, Math.min(1.5, parsed.voiceSpeed))

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Download, Share, Smartphone, WifiOff } from 'lucide-react';
+import { UiLanguage } from '../types/learning';
+import { getUi } from '../lib/i18n';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -132,7 +134,7 @@ export function PWAInstallButton() {
   );
 }
 
-export function OfflineIndicator() {
+export function OfflineIndicator({ uiLanguage = 'ar' }: { uiLanguage?: UiLanguage }) {
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
@@ -153,7 +155,7 @@ export function OfflineIndicator() {
   return (
     <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-2xl bg-[#FF9600] px-4 py-2 text-xs font-extrabold text-white shadow-lg">
       <WifiOff className="w-3.5 h-3.5" />
-      <span>وضع عدم الاتصال — الدروس المحفوظة متاحة</span>
+      <span>{getUi(uiLanguage).offlineBanner}</span>
     </div>
   );
 }

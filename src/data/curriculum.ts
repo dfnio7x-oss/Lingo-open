@@ -217,14 +217,18 @@ export function getMergedLevelLessons(level: CefrLevel): LessonUnit[] {
   return ALL_LESSONS.filter((l) => l.level === level);
 }
 
-export const ALL_WORDS: (VocabWord & { level: CefrLevel; lessonTitle: string })[] =
-  ALL_CORE_LESSONS.flatMap((lesson) =>
-    lesson.words.map((w) => ({
-      ...w,
-      level: lesson.level,
-      lessonTitle: lesson.title,
-    }))
-  );
+export const ALL_WORDS: (VocabWord & {
+  level: CefrLevel;
+  lessonId: string;
+  lessonTitle: string;
+})[] = ALL_CORE_LESSONS.flatMap((lesson) =>
+  lesson.words.map((w) => ({
+    ...w,
+    level: lesson.level,
+    lessonId: lesson.id,
+    lessonTitle: lesson.title,
+  }))
+);
 
 function countLessonsForLevel(level: CefrLevel): number {
   return ALL_LESSONS.filter((l) => l.level === level).length;

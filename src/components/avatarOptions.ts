@@ -62,3 +62,9 @@ export const AVATAR_OPTIONS: AvatarOption[] = [
     bg: 'bg-yellow-100 dark:bg-yellow-900/40',
   },
 ];
+
+export function getRandomAvatarId(): string {
+  const pool = AVATAR_OPTIONS.filter((opt) => opt.id !== 'app-crest');
+  const chosen = pool[Math.floor(Math.random() * pool.length)];
+  return chosen ? chosen.id : 'scholar-owl';
+}

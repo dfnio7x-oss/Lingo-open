@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
+  AlertCircle,
   Award,
   BookOpen,
   Camera,
   CloudCheck,
+  CloudOff,
   Flame,
   LogOut,
+  RefreshCw,
   RotateCcw,
   Target,
   Trash2,
@@ -15,13 +18,18 @@ import {
   Zap,
 } from 'lucide-react';
 import { CefrLevel, UserProfileData } from '../types/learning';
-import { ACHIEVEMENTS, ALL_LESSONS, ALL_WORDS, LEVEL_META } from '../data/curriculum';
+import { ACHIEVEMENTS, ALL_LESSONS, ALL_WORDS } from '../data/curriculum';
 import { OXFORD_ALL_WORDS } from '../data/oxford3000';
+import { getUi } from '../lib/i18n';
 import { soundEngine } from '../lib/sound';
 import { AVATAR_OPTIONS } from './avatarOptions';
 
 interface YouViewProps {
   profile: UserProfileData;
+  syncStatus: 'synced' | 'syncing' | 'localOnly' | 'error';
+  isCloudSignedIn: boolean;
+  onSyncNow: () => void;
+  onLinkGoogle: () => void;
   onOpenVault: (level?: CefrLevel | 'ALL') => void;
   onOpenAvatarModal: () => void;
   onUpdateAccount: (patch: Partial<UserProfileData>) => void;
@@ -30,18 +38,22 @@ interface YouViewProps {
   onDeleteAccount: () => void;
 }
 
-const DAYS: { key: keyof UserProfileData['weeklyXp']; label: string }[] = [
-  { key: 'Mon', label: 'الإثنين' },
-  { key: 'Tue', label: 'الثلاثاء' },
-  { key: 'Wed', label: 'الأربعاء' },
-  { key: 'Thu', label: 'الخميس' },
-  { key: 'Fri', label: 'الجمعة' },
-  { key: 'Sat', label: 'السبت' },
-  { key: 'Sun', label: 'الأحد' },
+const DAY_KEYS: (keyof UserProfileData['weeklyXp'])[] = [
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+  'Sat',
+  'Sun',
 ];
 
 export function YouView({
   profile,
+  syncStatus,
+  isCloudSignedIn,
+  onSyncNow,
+  onLinkGoogle,
   onOpenVault,
   onOpenAvatarModal,
   onUpdateAccount,
@@ -49,6 +61,10 @@ export function YouView({
   onResetProgress,
   onDeleteAccount,
 }: YouViewProps) {
+  const t = getUi(profile.uiLanguage);
+  const y = t.you;
+  const isRtl = profile.uiLanguage === 'ar';
+
   const [nameDraft, setNameDraft] = useState(profile.displayName);
   const [emailDraft, setEmailDraft] = useState(profile.email);
   const [savedNotice, setSavedNotice] = useState(false);
@@ -73,7 +89,7 @@ export function YouView({
   const avatarImageSrc = profile.customAvatarUrl || selectedAvatar.image;
   const totalCatalogWords = ALL_WORDS.length + OXFORD_ALL_WORDS.length;
 
-  const weeklyValues = DAYS.map((d) => profile.weeklyXp[d.key] || 0);
+  const weeklyValues = DAY_KEYS.map((k) => profile.weeklyXp[k] || 0);
   const maxWeeklyXp = Math.max(...weeklyValues, profile.dailyGoal, 40);
   const weeklyTotal = weeklyValues.reduce((acc, v) => acc + v, 0);
 
@@ -107,7 +123,7 @@ export function YouView({
 
   const handleSaveAccount = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanName = nameDraft.trim() || profile.username || 'متعلم';
+    const cleanName = nameDraft.trim() || profile.username || 'Learner';
     const cleanEmail = emailDraft.trim();
     soundEngine.playCorrect(profile.soundEnabled, 1);
     onUpdateAccount({
@@ -120,7 +136,7 @@ export function YouView({
 
   return (
     <div className="space-y-6">
-      {/* بطاقة الملف الشخصي */}
+      {/* Profile Hero Card */}
       <section className="rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 sm:p-8 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
@@ -130,7 +146,7 @@ export function YouView({
                 soundEngine.playClick(profile.soundEnabled);
                 onOpenAvatarModal();
               }}
-              aria-label="تخصيص الصورة الشخصية"
+              aria-label={y.changeAvatarBtn}
               className="relative shrink-0 group cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#1CB0F6]/40 rounded-3xl"
             >
               {avatarImageSrc ? (
@@ -168,14 +184,19 @@ export function YouView({
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">
-                المستوى الحالي: {profile.difficulty} · {LEVEL_META[profile.difficulty].title} ·{' '}
-                تم فتح {profile.unlockedLevels.length} من ٦ مستويات
+                {y.currentLevelLine(
+                  profile.difficulty,
+                  t.levels[profile.difficulty].title,
+                  profile.unlockedLevels.length
+                )}
               </p>
 
               <div className="mt-3 w-48 sm:w-64">
                 <div className="flex justify-between text-[11px] font-bold text-[var(--text-secondary)] mb-1">
-                  <span>تقدم المستوى {userLevel}</span>
-                  <span dir="ltr" className="font-mono-num">{xpIntoLevel}/120 XP</span>
+                  <span>{y.levelProgress(userLevel)}</span>
+                  <span dir="ltr" className="font-mono-num">
+                    {xpIntoLevel}/120 XP
+                  </span>
                 </div>
                 <div className="h-2.5 rounded-full bg-[var(--bg-surface-muted)] overflow-hidden">
                   <motion.div
@@ -199,7 +220,7 @@ export function YouView({
               className="btn-3d-neutral px-4 py-3 rounded-2xl text-xs sm:text-sm font-extrabold flex items-center gap-2 cursor-pointer"
             >
               <Camera className="w-4 h-4 text-[#1CB0F6]" />
-              <span>تغيير الصورة</span>
+              <span>{y.changeAvatarBtn}</span>
             </button>
 
             <button
@@ -211,15 +232,15 @@ export function YouView({
               className="btn-3d-blue px-5 py-3 rounded-2xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <BookOpen className="w-4 h-4" />
-              <span>المفردات ({profile.masteredWords.length.toLocaleString()})</span>
+              <span>{y.vocabBtn(profile.masteredWords.length.toLocaleString())}</span>
             </button>
           </div>
         </div>
       </section>
 
-      {/* إدارة الحساب والمزامنة */}
+      {/* Account & Cloud Sync Management */}
       <section
-        aria-label="إعدادات الحساب"
+        aria-label={y.accountSectionTitle}
         className="rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 shadow-sm space-y-5"
       >
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -229,18 +250,60 @@ export function YouView({
             </div>
             <div>
               <h2 className="font-display font-black text-lg text-[var(--text-primary)]">
-                بيانات الحساب والملف الشخصي
+                {y.accountSectionTitle}
               </h2>
               <p className="text-xs text-[var(--text-secondary)]">
-                عدّل اسم العرض أو الصورة أو البريد الإلكتروني أو إدارة الحساب
+                {y.accountSectionSub}
               </p>
             </div>
           </div>
 
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#58CC02] bg-[#58CC02]/10 px-3 py-1.5 rounded-xl">
-            <CloudCheck className="w-4 h-4" />
-            <span>المزامنة السحابية مفعّلة</span>
-          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {syncStatus === 'synced' && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#58CC02] bg-[#58CC02]/10 px-3 py-1.5 rounded-xl">
+                <CloudCheck className="w-4 h-4" />
+                <span>{y.cloudSynced}</span>
+              </span>
+            )}
+            {syncStatus === 'syncing' && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1CB0F6] bg-[#1CB0F6]/10 px-3 py-1.5 rounded-xl">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>{y.cloudSyncing}</span>
+              </span>
+            )}
+            {syncStatus === 'localOnly' && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FF9600] bg-[#FF9600]/12 px-3 py-1.5 rounded-xl">
+                <CloudOff className="w-4 h-4" />
+                <span>{y.cloudLocalOnly}</span>
+              </span>
+            )}
+            {syncStatus === 'error' && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FF4B4B] bg-[#FF4B4B]/12 px-3 py-1.5 rounded-xl">
+                <AlertCircle className="w-4 h-4" />
+                <span>{y.cloudSyncError}</span>
+              </span>
+            )}
+
+            {isCloudSignedIn ? (
+              <button
+                type="button"
+                onClick={onSyncNow}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-surface-muted)] hover:bg-[#1CB0F6]/12 text-xs font-extrabold text-[#1CB0F6] cursor-pointer transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>{y.syncNowBtn}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onLinkGoogle}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1CB0F6]/12 hover:bg-[#1CB0F6]/20 text-xs font-extrabold text-[#1CB0F6] cursor-pointer transition-colors"
+              >
+                <CloudCheck className="w-3.5 h-3.5" />
+                <span>{y.linkGoogleBtn}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <form
@@ -252,7 +315,7 @@ export function YouView({
               htmlFor="you-display-name"
               className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5"
             >
-              اسم العرض
+              {y.displayNameLabel}
             </label>
             <input
               id="you-display-name"
@@ -269,7 +332,7 @@ export function YouView({
               htmlFor="you-email"
               className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5"
             >
-              البريد الإلكتروني (اختياري)
+              {y.emailLabel}
             </label>
             <input
               id="you-email"
@@ -288,7 +351,7 @@ export function YouView({
               type="submit"
               className="btn-3d-green w-full py-2.5 px-4 rounded-2xl font-display font-extrabold text-sm cursor-pointer"
             >
-              {savedNotice ? 'تم الحفظ!' : 'حفظ'}
+              {savedNotice ? y.savedBtn : y.saveBtn}
             </button>
           </div>
         </form>
@@ -303,7 +366,7 @@ export function YouView({
             className="btn-3d-neutral px-5 py-2.5 rounded-2xl font-display font-extrabold text-xs flex items-center gap-2 cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
-            <span>تسجيل الخروج</span>
+            <span>{y.signOutBtn}</span>
           </button>
 
           <button
@@ -315,7 +378,7 @@ export function YouView({
             className="px-4 py-2.5 rounded-2xl bg-[var(--bg-surface-muted)] hover:bg-[#FF9600]/15 text-[#cc7700] dark:text-[#FFB347] font-display font-extrabold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>إعادة ضبط التقدم</span>
+            <span>{y.resetBtn}</span>
           </button>
 
           <button
@@ -327,13 +390,13 @@ export function YouView({
             className="px-4 py-2.5 rounded-2xl bg-[#FF4B4B]/10 hover:bg-[#FF4B4B]/20 text-[#FF4B4B] font-display font-extrabold text-xs flex items-center gap-1.5 cursor-pointer transition-colors sm:ms-auto"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>حذف الحساب</span>
+            <span>{y.deleteBtn}</span>
           </button>
         </div>
       </section>
 
-      {/* بطاقات الإحصائيات الأربع */}
-      <section aria-label="الإحصائيات" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 4 Stats Cards */}
+      <section aria-label={y.statXp} className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-5 shadow-sm">
           <div className="w-10 h-10 rounded-2xl bg-[#FF9600]/15 text-[#FF9600] flex items-center justify-center mb-3">
             <Flame className="w-5 h-5 fill-[#FF9600]" />
@@ -342,7 +405,7 @@ export function YouView({
             {profile.streak}
           </div>
           <div className="text-xs font-bold text-[var(--text-secondary)] mt-0.5">
-            أيام الحماس المتتالية
+            {y.statStreak}
           </div>
         </div>
 
@@ -354,7 +417,7 @@ export function YouView({
             {profile.xp.toLocaleString()}
           </div>
           <div className="text-xs font-bold text-[var(--text-secondary)] mt-0.5">
-            إجمالي نقاط الخبرة XP
+            {y.statXp}
           </div>
         </div>
 
@@ -366,7 +429,7 @@ export function YouView({
             {profile.lessonsCompleted.toLocaleString()}
           </div>
           <div className="text-xs font-bold text-[var(--text-secondary)] mt-0.5">
-            الدروس المكتملة
+            {y.statLessons}
           </div>
         </div>
 
@@ -378,44 +441,50 @@ export function YouView({
             {accuracy}%
           </div>
           <div className="text-xs font-bold text-[var(--text-secondary)] mt-0.5">
-            نسبة الدقة
+            {y.statAccuracy}
           </div>
         </div>
       </section>
 
-      {/* النشاط الأسبوعي + المفردات المتقنة */}
+      {/* Weekly Activity + Mastered Words */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <section
-          aria-label="النشاط الأسبوعي"
+          aria-label={y.weeklyTitle}
           className="lg:col-span-7 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 shadow-sm flex flex-col justify-between"
         >
           <div className="flex items-center justify-between gap-4 mb-6">
             <div>
               <h2 className="font-display font-black text-xl text-[var(--text-primary)]">
-                النشاط الأسبوعي
+                {y.weeklyTitle}
               </h2>
               <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
-                نقاط الخبرة المكتسبة خلال آخر ٧ أيام
+                {y.weeklySub}
               </p>
             </div>
-            <div className="text-left">
+            <div className={isRtl ? 'text-left' : 'text-right'}>
               <div dir="ltr" className="font-mono-num font-black text-xl text-[#1CB0F6]">
                 {weeklyTotal} XP
               </div>
               <div className="text-[11px] font-bold text-[var(--text-secondary)]">
-                هذا الأسبوع
+                {y.thisWeek}
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-7 gap-2 sm:gap-4 items-end h-48 pt-6">
-            {DAYS.map((day) => {
-              const val = profile.weeklyXp[day.key] || 0;
-              const heightPct = Math.max(Math.round((val / maxWeeklyXp) * 100), val > 0 ? 14 : 6);
+            {DAY_KEYS.map((dayKey) => {
+              const val = profile.weeklyXp[dayKey] || 0;
+              const heightPct = Math.max(
+                Math.round((val / maxWeeklyXp) * 100),
+                val > 0 ? 14 : 6
+              );
               const hitGoal = val >= profile.dailyGoal;
 
               return (
-                <div key={day.key} className="flex flex-col items-center gap-2 h-full justify-end group">
+                <div
+                  key={dayKey}
+                  className="flex flex-col items-center gap-2 h-full justify-end group"
+                >
                   <span className="font-mono-num text-[11px] font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors">
                     {val}
                   </span>
@@ -434,7 +503,7 @@ export function YouView({
                     />
                   </div>
                   <span className="text-[10px] sm:text-xs font-extrabold text-[var(--text-secondary)] whitespace-nowrap">
-                    {day.label}
+                    {y.days[dayKey]}
                   </span>
                 </div>
               );
@@ -443,22 +512,23 @@ export function YouView({
         </section>
 
         <section
-          aria-label="المفردات المتقنة"
+          aria-label={y.masteredTitle}
           className="lg:col-span-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 shadow-sm flex flex-col justify-between"
         >
           <div>
             <div className="flex items-center justify-between gap-2 mb-4">
               <h2 className="font-display font-black text-xl text-[var(--text-primary)]">
-                المفردات المتقنة
+                {y.masteredTitle}
               </h2>
               <span dir="ltr" className="font-mono-num text-xs font-bold text-[#58CC02]">
-                {profile.masteredWords.length.toLocaleString()} / {totalCatalogWords.toLocaleString()}
+                {profile.masteredWords.length.toLocaleString()} /{' '}
+                {totalCatalogWords.toLocaleString()}
               </span>
             </div>
 
             {masteredWordObjects.length === 0 ? (
               <div className="rounded-2xl bg-[var(--bg-surface-muted)] p-6 text-center text-sm text-[var(--text-secondary)]">
-                أكمل درسك الأول لتبدأ ببناء حصيلتك من الكلمات المتقنة!
+                {y.masteredEmpty}
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -478,13 +548,15 @@ export function YouView({
                         </span>
                       </div>
                       <div className="text-xs text-[var(--text-secondary)] truncate">
-                        {w.translations.ar}
+                        {profile.uiLanguage === 'en'
+                          ? w.definition
+                          : w.translations[profile.uiLanguage]}
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => soundEngine.speakWord(w.word, true, profile.voiceSpeed)}
-                      aria-label={`نطق ${w.word}`}
+                      aria-label={t.daily.speakWordAria(w.word)}
                       className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] text-[#1CB0F6] flex items-center justify-center shrink-0 cursor-pointer hover:scale-105 transition-transform"
                     >
                       <Volume2 className="w-4 h-4" />
@@ -503,19 +575,19 @@ export function YouView({
             }}
             className="btn-3d-neutral mt-4 w-full py-2.5 rounded-2xl text-xs font-extrabold cursor-pointer"
           >
-            استكشاف جميع الكلمات ({totalCatalogWords.toLocaleString()})
+            {y.exploreAllWords(totalCatalogWords.toLocaleString())}
           </button>
         </section>
       </div>
 
-      {/* شبكة الإنجازات الموازية للدروس والمستويات */}
-      <section aria-label="أوسمة الإنجازات" className="space-y-4">
+      {/* Achievements Grid */}
+      <section aria-label={y.achievementsTitle} className="space-y-4">
         <div>
           <h2 className="font-display font-black text-xl text-[var(--text-primary)]">
-            أوسمة الإنجازات
+            {y.achievementsTitle}
           </h2>
           <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
-            إنجازات متدرجة توازي تقدمك في دروس ومستويات اللغة من A1 حتى C2
+            {y.achievementsSub}
           </p>
         </div>
 
@@ -523,7 +595,14 @@ export function YouView({
           {ACHIEVEMENTS.map((badge) => {
             const current = getMetricValue(badge);
             const unlocked = current >= badge.target;
-            const pct = Math.min(100, Math.round((current / Math.max(badge.target, 1)) * 100));
+            const pct = Math.min(
+              100,
+              Math.round((current / Math.max(badge.target, 1)) * 100)
+            );
+            const locBadge = t.achievements[badge.id] || {
+              title: badge.title,
+              description: badge.description,
+            };
 
             return (
               <div
@@ -550,15 +629,16 @@ export function YouView({
                       unlocked ? 'text-[#58CC02]' : 'text-[var(--text-secondary)]'
                     }`}
                   >
-                    {Math.min(current, badge.target).toLocaleString()} / {badge.target.toLocaleString()}
+                    {Math.min(current, badge.target).toLocaleString()} /{' '}
+                    {badge.target.toLocaleString()}
                   </span>
                 </div>
 
                 <h3 className="font-display font-black text-base text-[var(--text-primary)]">
-                  {badge.title}
+                  {locBadge.title}
                 </h3>
                 <p className="text-xs text-[var(--text-secondary)] mt-1 mb-3 leading-relaxed">
-                  {badge.description}
+                  {locBadge.description}
                 </p>
 
                 <div className="h-2 rounded-full bg-[var(--bg-surface-muted)] overflow-hidden">
@@ -575,24 +655,20 @@ export function YouView({
         </div>
       </section>
 
-      {/* نافذة تأكيد داخل التطبيق */}
+      {/* Confirmation Modal */}
       {confirmAction && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="تأكيد الإجراء"
+          aria-label={confirmAction === 'delete' ? y.confirmDeleteTitle : y.confirmResetTitle}
           className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4"
         >
           <div className="max-w-md w-full rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 shadow-2xl space-y-4">
             <h3 className="font-display font-black text-xl text-[var(--text-primary)]">
-              {confirmAction === 'delete'
-                ? 'هل تريد حذف حسابك نهائياً؟'
-                : 'هل تريد إعادة ضبط التقدم؟'}
+              {confirmAction === 'delete' ? y.confirmDeleteTitle : y.confirmResetTitle}
             </h3>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-              {confirmAction === 'delete'
-                ? 'سيؤدي هذا إلى حذف حسابك ومزامنتك السحابية ونقاط الخبرة والدروس المكتملة نهائياً.'
-                : 'سيتم تصفير نقاط الخبرة وسلسلة الأيام وإعادة الدروس إلى بداية المستوى A1.'}
+              {confirmAction === 'delete' ? y.confirmDeleteBody : y.confirmResetBody}
             </p>
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
@@ -600,7 +676,7 @@ export function YouView({
                 onClick={() => setConfirmAction(null)}
                 className="btn-3d-neutral px-5 py-2.5 rounded-2xl text-sm font-bold cursor-pointer"
               >
-                إلغاء
+                {y.cancelBtn}
               </button>
               <button
                 type="button"
@@ -615,7 +691,7 @@ export function YouView({
                 }}
                 className="px-5 py-2.5 rounded-2xl bg-[#FF4B4B] text-white font-display font-extrabold text-sm shadow-[0_4px_0_#cc2f2f] active:translate-y-0.5 cursor-pointer"
               >
-                {confirmAction === 'delete' ? 'نعم، احذف الحساب' : 'نعم، أعد الضبط'}
+                {confirmAction === 'delete' ? y.confirmDeleteBtn : y.confirmResetBtn}
               </button>
             </div>
           </div>

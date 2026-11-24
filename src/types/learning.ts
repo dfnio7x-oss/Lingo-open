@@ -2,7 +2,9 @@ export type CefrLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
 
 export type UiLanguage = 'en' | 'ar' | 'es' | 'fr';
 
-export type NavTab = 'home' | 'you' | 'setting';
+export type NavTab = 'home' | 'daily' | 'you' | 'setting';
+
+export type HomeMode = 'vocabulary' | 'grammar';
 
 export interface VocabWord {
   id: string;
@@ -54,6 +56,56 @@ export interface LessonUnit {
   source?: 'core' | 'oxford3000' | 'oxford5000' | 'c2lingvo';
   xpReward: number;
   words: VocabWord[];
+}
+
+export type GrammarTopicKey =
+  | 'tenses'
+  | 'perfect'
+  | 'future'
+  | 'modals'
+  | 'conditionals'
+  | 'passive'
+  | 'reported'
+  | 'questions'
+  | 'ing-to'
+  | 'articles'
+  | 'pronouns'
+  | 'relative'
+  | 'adjectives'
+  | 'conjunctions'
+  | 'phrasal';
+
+export interface GrammarRulePoint {
+  formula: string;
+  explanation: Record<UiLanguage, string>;
+  examples: {
+    en: string;
+    note?: Record<UiLanguage, string>;
+  }[];
+}
+
+export interface GrammarQuestion {
+  id: string;
+  kind: 'choice' | 'fill' | 'fix';
+  prompt: Record<UiLanguage, string>;
+  sentence: string;
+  options: string[];
+  correctAnswer: string;
+  explanation: Record<UiLanguage, string>;
+}
+
+export interface GrammarUnit {
+  id: string;
+  unitRange: string;
+  level: CefrLevel;
+  order: number;
+  topic: GrammarTopicKey;
+  icon: string;
+  title: Record<UiLanguage, string>;
+  subtitle: Record<UiLanguage, string>;
+  xpReward: number;
+  rules: GrammarRulePoint[];
+  questions: GrammarQuestion[];
 }
 
 export interface LevelInfo {

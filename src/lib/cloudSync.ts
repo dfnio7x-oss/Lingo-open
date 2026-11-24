@@ -1,13 +1,15 @@
 import {
   createUserWithEmailAndPassword,
-  signInAnonymously,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
+  User,
 } from 'firebase/auth';
 import { deleteDoc, doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { CefrLevel, UserProfileData } from '../types/learning';
-import { auth, db, handleFirestoreError, OperationType } from './firebase';
-import { getTodayIso } from './profileStore';
+import { auth, db, googleProvider, handleFirestoreError, OperationType } from './firebase';
+import { createDefaultProfile, getTodayIso } from './profileStore';
+import { getRandomAvatarId } from '../components/avatarOptions';
 
 function toInternalAuthEmail(username: string): string {
   const safe = username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
@@ -15,11 +17,10 @@ function toInternalAuthEmail(username: string): string {
 }
 
 function toFirebasePassword(rawPassword: string): string {
-  // Ensure Firebase 6-char minimum when user picks 4+ char password while keeping per-user derivation
   return rawPassword.length >= 6 ? rawPassword : `${rawPassword}__ll`;
 }
 
-function sanitizeCloudAvatarUrl(url?: string): string {
+export function sanitizeCloudAvatarUrl(url?: string): string {
   if (!url) return '';
   if (url.startsWith('data:')) return '';
   return url.slice(0, 512);
@@ -29,15 +30,35 @@ function clampList<T>(arr: T[], max: number): T[] {
   return Array.isArray(arr) ? arr.slice(0, max) : [];
 }
 
+export function deriveUsernameFromFirebaseUser(fbUser: User): string {
+  const rawBase =
+    fbUser.email?.split('@')[0] ||
+    fbUser.displayName ||
+    `learner_${fbUser.uid.slice(0, 6)}`;
+  let cleaned = rawBase.toLowerCase().replace(/[^a-z0-9_.-]/g, '_').replace(/^_+|_+$/g, '');
+  if (cleaned.length < 3) {
+    cleaned = `user_${fbUser.uid.slice(0, 6)}`.toLowerCase();
+  }
+  return cleaned.slice(0, 20);
+}
+
 function buildCloudProfilePayload(profile: UserProfileData, uid: string) {
+  const safeUsername =
+    (profile.username || 'learner')
+      .trim()
+      .replace(/[^a-zA-Z0-9_.-]/g, '_')
+      .slice(0, 20) || 'learner';
+  const paddedUsername = safeUsername.length >= 3 ? safeUsername : `${safeUsername}_usr`.slice(0, 20);
+
   return {
     uid,
-    username: profile.username.slice(0, 20),
-    displayName: (profile.displayName || profile.username).slice(0, 80),
-    avatarId: (profile.avatarId === 'pip-fox' ? 'app-crest' : profile.avatarId || 'app-crest').slice(
-      0,
-      64
-    ),
+    username: paddedUsername,
+    displayName: (profile.displayName || paddedUsername).trim().slice(0, 80) || paddedUsername,
+    avatarId: (
+      profile.avatarId === 'pip-fox' || !profile.avatarId
+        ? getRandomAvatarId()
+        : profile.avatarId
+    ).slice(0, 64),
     customAvatarUrl: sanitizeCloudAvatarUrl(profile.customAvatarUrl),
     xp: Math.max(0, Math.round(profile.xp || 0)),
     streak: Math.max(0, Math.round(profile.streak || 0)),
@@ -56,10 +77,12 @@ function buildCloudProfilePayload(profile: UserProfileData, uid: string) {
     darkMode: Boolean(profile.darkMode),
     uiLanguage: profile.uiLanguage || 'ar',
     unlockedLevels:
-      profile.unlockedLevels.length > 0 ? profile.unlockedLevels.slice(0, 6) : (['A1'] as CefrLevel[]),
-    completedLessons: clampList(profile.completedLessons, 2000),
+      profile.unlockedLevels && profile.unlockedLevels.length > 0
+        ? profile.unlockedLevels.slice(0, 6)
+        : (['A1'] as CefrLevel[]),
+    completedLessons: clampList(profile.completedLessons || [], 2000),
     lessonStars: profile.lessonStars || {},
-    masteredWords: clampList(profile.masteredWords, 15000),
+    masteredWords: clampList(profile.masteredWords || [], 15000),
     weeklyXp: {
       Mon: Math.round(profile.weeklyXp?.Mon || 0),
       Tue: Math.round(profile.weeklyXp?.Tue || 0),
@@ -72,75 +95,144 @@ function buildCloudProfilePayload(profile: UserProfileData, uid: string) {
   };
 }
 
-export async function ensureCloudSession(
+export type CloudAuthResult =
+  | { ok: true; uid: string }
+  | {
+      ok: false;
+      reason:
+        | 'wrong-password'
+        | 'user-not-found'
+        | 'email-in-use'
+        | 'operation-not-allowed'
+        | 'network'
+        | 'unknown';
+    };
+
+export async function authenticateEmailCloudSession(
   username: string,
   password: string,
   mode: 'login' | 'signup'
-): Promise<string | null> {
+): Promise<CloudAuthResult> {
   const email = toInternalAuthEmail(username);
   const fbPass = toFirebasePassword(password);
 
   try {
     if (mode === 'signup') {
-      try {
-        const cred = await createUserWithEmailAndPassword(auth, email, fbPass);
-        return cred.user.uid;
-      } catch (err: unknown) {
-        const code = (err as { code?: string })?.code || '';
-        if (code === 'auth/email-already-in-use') {
-          const cred = await signInWithEmailAndPassword(auth, email, fbPass);
-          return cred.user.uid;
-        }
-        if (
-          code === 'auth/operation-not-allowed' ||
-          code === 'auth/admin-restricted-operation'
-        ) {
-          const anon = await signInAnonymously(auth);
-          return anon.user.uid;
-        }
-        throw err;
-      }
+      const cred = await createUserWithEmailAndPassword(auth, email, fbPass);
+      return { ok: true, uid: cred.user.uid };
     } else {
-      try {
-        const cred = await signInWithEmailAndPassword(auth, email, fbPass);
-        return cred.user.uid;
-      } catch (err: unknown) {
-        const code = (err as { code?: string })?.code || '';
-        if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
-          // Local account may have been created offline or before cloud sync was added — try registering it cleanly
-          try {
-            const cred = await createUserWithEmailAndPassword(auth, email, fbPass);
-            return cred.user.uid;
-          } catch {
-            if (auth.currentUser) return auth.currentUser.uid;
-            const anon = await signInAnonymously(auth);
-            return anon.user.uid;
-          }
-        }
-        if (
-          code === 'auth/operation-not-allowed' ||
-          code === 'auth/admin-restricted-operation'
-        ) {
-          if (auth.currentUser) return auth.currentUser.uid;
-          const anon = await signInAnonymously(auth);
-          return anon.user.uid;
-        }
-        return auth.currentUser?.uid ?? null;
-      }
+      const cred = await signInWithEmailAndPassword(auth, email, fbPass);
+      return { ok: true, uid: cred.user.uid };
     }
-  } catch {
-    // Offline or restricted auth: fall back to current session or anonymous if possible
-    if (auth.currentUser) return auth.currentUser.uid;
-    try {
-      const anon = await signInAnonymously(auth);
-      return anon.user.uid;
-    } catch {
-      return null;
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code || '';
+    if (code === 'auth/email-already-in-use') {
+      return { ok: false, reason: 'email-in-use' };
     }
+    if (code === 'auth/user-not-found') {
+      return { ok: false, reason: 'user-not-found' };
+    }
+    if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+      return { ok: false, reason: 'wrong-password' };
+    }
+    if (
+      code === 'auth/operation-not-allowed' ||
+      code === 'auth/admin-restricted-operation'
+    ) {
+      return { ok: false, reason: 'operation-not-allowed' };
+    }
+    if (code === 'auth/network-request-failed') {
+      return { ok: false, reason: 'network' };
+    }
+    return { ok: false, reason: 'unknown' };
   }
 }
 
-export async function fetchCloudProfile(uid: string): Promise<Partial<UserProfileData> | null> {
+export async function signInWithGooglePopup(
+  mergeFromProfile?: UserProfileData
+): Promise<
+  | { ok: true; profile: UserProfileData; isNewUser: boolean }
+  | { ok: false; code: 'popup-closed' | 'failed' }
+> {
+  try {
+    googleProvider.setCustomParameters({ prompt: 'select_account' });
+    const cred = await signInWithPopup(auth, googleProvider);
+    const fbUser = cred.user;
+    const cloudData = await fetchCloudProfile(fbUser.uid);
+
+    if (cloudData) {
+      const baseUsername =
+        cloudData.username || deriveUsernameFromFirebaseUser(fbUser);
+      const base = mergeFromProfile
+        ? mergeFromProfile
+        : createDefaultProfile(
+            fbUser.uid,
+            baseUsername,
+            fbUser.displayName || baseUsername,
+            { randomizeAvatar: true }
+          );
+      const hydrated = mergeLocalAndCloudProfiles(
+        {
+          ...base,
+          email: fbUser.email || base.email || '',
+        },
+        cloudData,
+        fbUser.uid
+      );
+      await ensureCloudProfileDoc(hydrated);
+      await syncCloudProgress(hydrated);
+      if (hydrated.email) {
+        await syncCloudPrivateEmail(hydrated.email, hydrated);
+      }
+      return { ok: true, profile: hydrated, isNewUser: false };
+    }
+
+    const derivedUsername =
+      mergeFromProfile?.username && mergeFromProfile.username !== 'learner'
+        ? mergeFromProfile.username
+        : deriveUsernameFromFirebaseUser(fbUser);
+    const baseProfile = mergeFromProfile
+      ? {
+          ...mergeFromProfile,
+          uid: fbUser.uid,
+          displayName:
+            mergeFromProfile.displayName || fbUser.displayName || derivedUsername,
+          email: fbUser.email || mergeFromProfile.email || '',
+        }
+      : createDefaultProfile(
+          fbUser.uid,
+          derivedUsername,
+          fbUser.displayName || derivedUsername,
+          { randomizeAvatar: true }
+        );
+
+    const newProfile: UserProfileData = {
+      ...baseProfile,
+      uid: fbUser.uid,
+      email: fbUser.email || baseProfile.email || '',
+    };
+
+    await ensureCloudProfileDoc(newProfile);
+    if (newProfile.email) {
+      await syncCloudPrivateEmail(newProfile.email, newProfile);
+    }
+
+    return { ok: true, profile: newProfile, isNewUser: true };
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code || '';
+    if (
+      code === 'auth/popup-closed-by-user' ||
+      code === 'auth/cancelled-popup-request'
+    ) {
+      return { ok: false, code: 'popup-closed' };
+    }
+    return { ok: false, code: 'failed' };
+  }
+}
+
+export async function fetchCloudProfile(
+  uid: string
+): Promise<Partial<UserProfileData> | null> {
   if (!auth.currentUser || auth.currentUser.uid !== uid) return null;
   const userPath = `users/${uid}`;
   try {
@@ -148,7 +240,6 @@ export async function fetchCloudProfile(uid: string): Promise<Partial<UserProfil
     if (!snap.exists()) return null;
     const data = snap.data() as Partial<UserProfileData>;
 
-    // Also try fetching isolated email PII
     let email = '';
     try {
       const privSnap = await getDoc(doc(db, 'users', uid, 'private', 'info'));
@@ -166,57 +257,81 @@ export async function fetchCloudProfile(uid: string): Promise<Partial<UserProfil
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code || '';
     const msg = err instanceof Error ? err.message : String(err);
-    if (code === 'unavailable' || msg.includes('offline') || msg.includes('network')) {
+    if (
+      code === 'unavailable' ||
+      msg.includes('offline') ||
+      msg.includes('network')
+    ) {
       return null;
     }
     handleFirestoreError(err, OperationType.GET, userPath);
   }
 }
 
-export async function ensureCloudProfileDoc(profile: UserProfileData): Promise<void> {
+export async function ensureCloudProfileDoc(
+  profile: UserProfileData
+): Promise<void> {
   const uid = auth.currentUser?.uid;
   if (!uid) return;
   const userRef = doc(db, 'users', uid);
-  const snap = await getDoc(userRef);
-  if (!snap.exists()) {
-    const payload = buildCloudProfilePayload(profile, uid);
-    try {
+  const userPath = `users/${uid}`;
+  try {
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) {
+      const payload = buildCloudProfilePayload(profile, uid);
       await setDoc(userRef, {
         ...payload,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `users/${uid}`);
     }
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code || '';
+    const msg = err instanceof Error ? err.message : String(err);
+    if (code === 'unavailable' || msg.includes('offline')) {
+      return;
+    }
+    handleFirestoreError(err, OperationType.CREATE, userPath);
   }
 }
 
-export async function syncCloudProfileMeta(profile: UserProfileData): Promise<void> {
+export async function syncCloudProfileMeta(
+  profile: UserProfileData
+): Promise<boolean> {
   const uid = auth.currentUser?.uid;
-  if (!uid) return;
+  if (!uid) return false;
+  const userPath = `users/${uid}`;
   try {
     await ensureCloudProfileDoc(profile);
     const userRef = doc(db, 'users', uid);
     await updateDoc(userRef, {
-      displayName: (profile.displayName || profile.username).slice(0, 80),
-      avatarId: (profile.avatarId === 'pip-fox' ? 'app-crest' : profile.avatarId || 'app-crest').slice(
-        0,
-        64
-      ),
+      displayName: (profile.displayName || profile.username).trim().slice(0, 80) || profile.username,
+      avatarId: (
+        profile.avatarId === 'pip-fox' || !profile.avatarId
+          ? 'app-crest'
+          : profile.avatarId
+      ).slice(0, 64),
       customAvatarUrl: sanitizeCloudAvatarUrl(profile.customAvatarUrl),
       updatedAt: serverTimestamp(),
     });
+    return true;
   } catch (err) {
-    console.warn('Cloud profile meta sync skipped:', err);
+    console.warn('Cloud profile meta sync failed:', err);
+    return false;
   }
 }
 
-export async function syncCloudPrivateEmail(email: string): Promise<void> {
+export async function syncCloudPrivateEmail(
+  email: string,
+  profile?: UserProfileData
+): Promise<boolean> {
   const uid = auth.currentUser?.uid;
-  if (!uid) return;
+  if (!uid) return false;
   const privRef = doc(db, 'users', uid, 'private', 'info');
   try {
+    if (profile) {
+      await ensureCloudProfileDoc(profile);
+    }
     await setDoc(
       privRef,
       {
@@ -226,14 +341,18 @@ export async function syncCloudPrivateEmail(email: string): Promise<void> {
       },
       { merge: true }
     );
+    return true;
   } catch (err) {
-    console.warn('Cloud private email sync skipped:', err);
+    console.warn('Cloud private email sync failed:', err);
+    return false;
   }
 }
 
-export async function syncCloudPreferences(profile: UserProfileData): Promise<void> {
+export async function syncCloudPreferences(
+  profile: UserProfileData
+): Promise<boolean> {
   const uid = auth.currentUser?.uid;
-  if (!uid) return;
+  if (!uid) return false;
   try {
     await ensureCloudProfileDoc(profile);
     const userRef = doc(db, 'users', uid);
@@ -248,14 +367,18 @@ export async function syncCloudPreferences(profile: UserProfileData): Promise<vo
       uiLanguage: profile.uiLanguage || 'ar',
       updatedAt: serverTimestamp(),
     });
+    return true;
   } catch (err) {
-    console.warn('Cloud preferences sync skipped:', err);
+    console.warn('Cloud preferences sync failed:', err);
+    return false;
   }
 }
 
-export async function syncCloudProgress(profile: UserProfileData): Promise<void> {
+export async function syncCloudProgress(
+  profile: UserProfileData
+): Promise<boolean> {
   const uid = auth.currentUser?.uid;
-  if (!uid) return;
+  if (!uid) return false;
   try {
     await ensureCloudProfileDoc(profile);
     const payload = buildCloudProfilePayload(profile, uid);
@@ -277,8 +400,29 @@ export async function syncCloudProgress(profile: UserProfileData): Promise<void>
       difficulty: payload.difficulty,
       updatedAt: serverTimestamp(),
     });
+    return true;
   } catch (err) {
-    console.warn('Cloud progress sync skipped:', err);
+    console.warn('Cloud progress sync failed:', err);
+    return false;
+  }
+}
+
+export async function syncFullProfileToCloud(
+  profile: UserProfileData
+): Promise<boolean> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return false;
+  try {
+    await ensureCloudProfileDoc(profile);
+    const okMeta = await syncCloudProfileMeta(profile);
+    const okPrefs = await syncCloudPreferences(profile);
+    const okProg = await syncCloudProgress(profile);
+    if (profile.email) {
+      await syncCloudPrivateEmail(profile.email, profile);
+    }
+    return okMeta && okPrefs && okProg;
+  } catch {
+    return false;
   }
 }
 
@@ -301,7 +445,7 @@ export async function recordCloudLessonAttempt(params: {
       completedAt: serverTimestamp(),
     });
   } catch (err) {
-    console.warn('Cloud attempt log skipped:', err);
+    console.warn('Cloud attempt log failed:', err);
   }
 }
 
@@ -357,9 +501,15 @@ export function mergeLocalAndCloudProfiles(
   return {
     ...base,
     uid,
-    username: local.username || cloud.username || 'learner',
+    username: cloud.username || local.username || 'learner',
     displayName: cloud.displayName || local.displayName,
     email: cloud.email || local.email || '',
+    avatarId:
+      cloud.avatarId && cloud.avatarId !== 'pip-fox'
+        ? cloud.avatarId
+        : local.avatarId && local.avatarId !== 'pip-fox'
+        ? local.avatarId
+        : getRandomAvatarId(),
     customAvatarUrl: local.customAvatarUrl || cloud.customAvatarUrl || undefined,
     xp: Math.max(local.xp || 0, cloud.xp || 0),
     streak: Math.max(local.streak || 0, cloud.streak || 0),

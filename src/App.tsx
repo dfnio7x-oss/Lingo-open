@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CefrLevel,
+  GrammarUnit,
   LessonUnit,
   NavTab,
   UserProfileData,
@@ -18,11 +19,14 @@ import {
   deleteAccountByUsername,
   getAccountProfile,
   getActiveSessionUsername,
+  loginWithGoogle,
+  normalizeProfile,
   saveAccountProfile,
   setActiveSessionUsername,
 } from './lib/authStore';
 import {
   deleteCloudAccountDocs,
+  deriveUsernameFromFirebaseUser,
   fetchCloudProfile,
   mergeLocalAndCloudProfiles,
   recordCloudLessonAttempt,
@@ -31,16 +35,21 @@ import {
   syncCloudPrivateEmail,
   syncCloudProfileMeta,
   syncCloudProgress,
+  syncFullProfileToCloud,
 } from './lib/cloudSync';
 import { auth } from './lib/firebase';
+import { getUi } from './lib/i18n';
 import { soundEngine } from './lib/sound';
 import { AuthScreen } from './components/AuthScreen';
 import { AvatarCustomizerModal } from './components/AvatarCustomizerModal';
 import { BottomNav } from './components/BottomNav';
+import { DailyView } from './components/DailyView';
+import { GrammarLessonPlayer } from './components/GrammarLessonPlayer';
 import { HomeView } from './components/HomeView';
 import { YouView } from './components/YouView';
 import { SettingsView } from './components/SettingsView';
 import { LessonPlayer } from './components/LessonPlayer';
+import { SplashScreen } from './components/SplashScreen';
 import { VocabVaultModal } from './components/VocabVaultModal';
 import { OfflineIndicator } from './components/PwaControls';
 import {
@@ -50,6 +59,7 @@ import {
 } from './components/VfxOverlay';
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     const activeUser = getActiveSessionUsername();
@@ -64,27 +74,65 @@ export default function App() {
     return loadLocalProfile();
   });
 
+  const [syncStatus, setSyncStatus] = useState<
+    'synced' | 'syncing' | 'localOnly' | 'error'
+  >(() => (auth.currentUser && !auth.currentUser.isAnonymous ? 'synced' : 'localOnly'));
+  const [isCloudSignedIn, setIsCloudSignedIn] = useState<boolean>(() =>
+    Boolean(auth.currentUser && !auth.currentUser.isAnonymous)
+  );
+
   const [activeLesson, setActiveLesson] = useState<LessonUnit | null>(null);
+  const [activeGrammarUnit, setActiveGrammarUnit] = useState<GrammarUnit | null>(null);
   const [vaultLevel, setVaultLevel] = useState<CefrLevel | 'ALL' | null>(null);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [bursts, setBursts] = useState<FloatingBurst[]>([]);
 
-  // Re-hydrate from Firestore when Firebase session restores on app boot
+  const t = getUi(profile.uiLanguage);
+
+  // Hydrate Firebase / Google sessions on boot even if localStorage was cleared
   useEffect(() => {
-    if (!isAuthenticated) return;
     const unsubscribe = auth.onAuthStateChanged(async (fbUser) => {
-      if (!fbUser) return;
+      if (!fbUser || fbUser.isAnonymous) {
+        setIsCloudSignedIn(false);
+        setSyncStatus('localOnly');
+        return;
+      }
+
+      setIsCloudSignedIn(true);
+      setSyncStatus('syncing');
       try {
         const cloudData = await fetchCloudProfile(fbUser.uid);
+        const derivedUser =
+          cloudData?.username || deriveUsernameFromFirebaseUser(fbUser);
+
         if (cloudData) {
-          setProfile((prev) => mergeLocalAndCloudProfiles(prev, cloudData, fbUser.uid));
+          setProfile((prev) => {
+            const base =
+              prev.uid === fbUser.uid || prev.username.toLowerCase() === derivedUser.toLowerCase()
+                ? prev
+                : createDefaultProfile(
+                    fbUser.uid,
+                    derivedUser,
+                    fbUser.displayName || derivedUser,
+                    { randomizeAvatar: true }
+                  );
+            const merged = normalizeProfile(
+              mergeLocalAndCloudProfiles(base, cloudData, fbUser.uid),
+              derivedUser
+            );
+            saveAccountProfile(merged.username, merged);
+            return merged;
+          });
+          setActiveSessionUsername(derivedUser);
+          setIsAuthenticated(true);
         }
+        setSyncStatus('synced');
       } catch {
-        // Keep local cache silently if offline
+        setSyncStatus('error');
       }
     });
     return () => unsubscribe();
-  }, [isAuthenticated]);
+  }, []);
 
   // Apply Dark Mode & Document Direction/Language cleanly to <html>
   useEffect(() => {
@@ -125,29 +173,69 @@ export default function App() {
     setProfile(loadedProfile);
     setIsAuthenticated(true);
     setActiveTab('home');
-    triggerBurst(`أهلاً بك، ${loadedProfile.displayName}!`, '#58CC02');
+    const signedInCloud = Boolean(auth.currentUser && !auth.currentUser.isAnonymous);
+    setIsCloudSignedIn(signedInCloud);
+    setSyncStatus(signedInCloud ? 'synced' : 'localOnly');
+    triggerBurst(getUi(loadedProfile.uiLanguage).toast.welcome(loadedProfile.displayName), '#58CC02');
   };
 
   const handleSignOut = () => {
     setActiveSessionUsername(null);
     void signOutCloudSession();
     setIsAuthenticated(false);
+    setIsCloudSignedIn(false);
+    setSyncStatus('localOnly');
     setActiveLesson(null);
+    setActiveGrammarUnit(null);
     setVaultLevel(null);
     setShowAvatarModal(false);
     setActiveTab('home');
   };
 
+  const handleSyncNow = async () => {
+    soundEngine.playClick(profile.soundEnabled);
+    setSyncStatus('syncing');
+    const ok = await syncFullProfileToCloud(profile);
+    if (ok) {
+      setSyncStatus('synced');
+      triggerBurst(t.toast.syncSuccess, '#58CC02');
+    } else {
+      setSyncStatus(auth.currentUser && !auth.currentUser.isAnonymous ? 'error' : 'localOnly');
+    }
+  };
+
+  const handleLinkGoogle = async () => {
+    soundEngine.playClick(profile.soundEnabled);
+    setSyncStatus('syncing');
+    const res = await loginWithGoogle(profile.uiLanguage, profile);
+    if (res.ok) {
+      setProfile(res.profile);
+      setIsCloudSignedIn(true);
+      setSyncStatus('synced');
+      soundEngine.playLessonComplete(profile.soundEnabled);
+      triggerBurst(t.toast.cloudLinked, '#1CB0F6');
+    } else {
+      setSyncStatus('localOnly');
+      triggerBurst(res.error, '#FF4B4B');
+    }
+  };
+
   const handleUpdateAccount = (patch: Partial<UserProfileData>) => {
     setProfile((prev) => {
       const next = { ...prev, ...patch };
-      if (isAuthenticated) {
-        if ('displayName' in patch || 'avatarId' in patch || 'customAvatarUrl' in patch) {
-          void syncCloudProfileMeta(next);
-        }
-        if ('email' in patch && typeof patch.email === 'string') {
-          void syncCloudPrivateEmail(patch.email);
-        }
+      if (isAuthenticated && auth.currentUser && !auth.currentUser.isAnonymous) {
+        setSyncStatus('syncing');
+        const runSync = async () => {
+          let ok = true;
+          if ('displayName' in patch || 'avatarId' in patch || 'customAvatarUrl' in patch) {
+            ok = (await syncCloudProfileMeta(next)) && ok;
+          }
+          if ('email' in patch && typeof patch.email === 'string') {
+            ok = (await syncCloudPrivateEmail(patch.email, next)) && ok;
+          }
+          setSyncStatus(ok ? 'synced' : 'error');
+        };
+        void runSync();
       }
       return next;
     });
@@ -156,8 +244,11 @@ export default function App() {
   const handleUpdatePreferences = (patch: Partial<UserProfileData>) => {
     setProfile((prev) => {
       const next = { ...prev, ...patch };
-      if (isAuthenticated) {
-        void syncCloudPreferences(next);
+      if (isAuthenticated && auth.currentUser && !auth.currentUser.isAnonymous) {
+        setSyncStatus('syncing');
+        void syncCloudPreferences(next).then((ok) =>
+          setSyncStatus(ok ? 'synced' : 'error')
+        );
       }
       return next;
     });
@@ -167,7 +258,7 @@ export default function App() {
     if (profile.unlockedLevels.includes(level)) return;
     soundEngine.playLevelUp(profile.soundEnabled);
     triggerConfettiBurst('stars');
-    triggerBurst(`تم فتح المستوى ${level}!`, '#1CB0F6', 'مستوى جديد جاهز');
+    triggerBurst(t.toast.levelUnlocked(level), '#1CB0F6', t.toast.levelReadySub);
 
     setProfile((prev) => {
       const next: UserProfileData = {
@@ -175,8 +266,11 @@ export default function App() {
         unlockedLevels: Array.from(new Set([...prev.unlockedLevels, level])) as CefrLevel[],
         difficulty: level,
       };
-      if (isAuthenticated) {
-        void syncCloudProgress(next);
+      if (isAuthenticated && auth.currentUser && !auth.currentUser.isAnonymous) {
+        setSyncStatus('syncing');
+        void syncCloudProgress(next).then((ok) =>
+          setSyncStatus(ok ? 'synced' : 'error')
+        );
       }
       return next;
     });
@@ -206,9 +300,9 @@ export default function App() {
       const levelLessonIds = ALL_LESSONS.filter(
         (l) => l.level === result.level && !l.id.startsWith('ox-deck-')
       ).map((l) => l.id);
-      const allTierCompleted = levelLessonIds.every((id) =>
-        nextCompleted.includes(id)
-      );
+      const allTierCompleted =
+        levelLessonIds.length > 0 &&
+        levelLessonIds.every((id) => nextCompleted.includes(id));
       const nextUnlocked = [...prev.unlockedLevels];
       if (allTierCompleted) {
         const currentIdx = CEFR_ORDER.indexOf(result.level);
@@ -244,9 +338,12 @@ export default function App() {
         },
       };
 
-      if (isAuthenticated) {
+      if (isAuthenticated && auth.currentUser && !auth.currentUser.isAnonymous) {
+        setSyncStatus('syncing');
         const acc = Math.round((result.correctCount / Math.max(result.totalCount, 1)) * 100);
-        void syncCloudProgress(nextProfile);
+        void syncCloudProgress(nextProfile).then((ok) =>
+          setSyncStatus(ok ? 'synced' : 'error')
+        );
         void recordCloudLessonAttempt({
           lessonId: result.lessonId,
           level: result.level,
@@ -277,12 +374,12 @@ export default function App() {
         xp: 0,
         streak: 0,
       };
-      if (isAuthenticated) {
+      if (isAuthenticated && auth.currentUser && !auth.currentUser.isAnonymous) {
         void syncCloudProgress(reset);
       }
       return reset;
     });
-    triggerBurst('تمت إعادة تعيين التقدم', '#FF9600');
+    triggerBurst(t.toast.progressReset, '#FF9600');
   };
 
   const handleDeleteAccount = () => {
@@ -293,20 +390,44 @@ export default function App() {
     void deleteCloudAccountDocs();
     setActiveSessionUsername(null);
     setIsAuthenticated(false);
+    setIsCloudSignedIn(false);
+    setSyncStatus('localOnly');
     setActiveLesson(null);
+    setActiveGrammarUnit(null);
     setVaultLevel(null);
     setShowAvatarModal(false);
     setActiveTab('home');
-    triggerBurst('تم حذف الحساب', '#FF4B4B');
+    triggerBurst(t.toast.accountDeleted, '#FF4B4B');
   };
+
+  const startCurrentLessonFromDaily = () => {
+    const unlockedLessons = ALL_LESSONS.filter((l) =>
+      profile.unlockedLevels.includes(l.level)
+    );
+    const nextLesson =
+      unlockedLessons.find((l) => !profile.completedLessons.includes(l.id)) ||
+      unlockedLessons[0] ||
+      ALL_LESSONS[0];
+    setActiveLesson(nextLesson);
+  };
+
+  if (showSplash) {
+    return (
+      <SplashScreen
+        uiLanguage={profile.uiLanguage}
+        onFinish={() => setShowSplash(false)}
+      />
+    );
+  }
 
   if (!isAuthenticated) {
     return (
       <>
-        <OfflineIndicator />
+        <OfflineIndicator uiLanguage={profile.uiLanguage} />
         <AuthScreen
           onSuccess={handleAuthSuccess}
           soundEnabled={profile.soundEnabled}
+          uiLanguage={profile.uiLanguage}
         />
         <VfxOverlay bursts={bursts} onExpire={expireBurst} />
       </>
@@ -315,9 +436,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-canvas)] text-[var(--text-primary)] pb-28">
-      <OfflineIndicator />
+      <OfflineIndicator uiLanguage={profile.uiLanguage} />
 
-      {/* Main Responsive Viewport Container */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
         <AnimatePresence mode="wait">
           <motion.div
@@ -332,7 +452,16 @@ export default function App() {
                 profile={profile}
                 onNavigateTab={setActiveTab}
                 onStartLesson={(lesson) => setActiveLesson(lesson)}
+                onStartGrammarUnit={(unit) => setActiveGrammarUnit(unit)}
                 onUnlockLevel={handleUnlockLevel}
+                onOpenVault={(lvl) => setVaultLevel(lvl || 'ALL')}
+              />
+            )}
+
+            {activeTab === 'daily' && (
+              <DailyView
+                profile={profile}
+                onStartCurrentLesson={startCurrentLessonFromDaily}
                 onOpenVault={(lvl) => setVaultLevel(lvl || 'ALL')}
               />
             )}
@@ -340,6 +469,10 @@ export default function App() {
             {activeTab === 'you' && (
               <YouView
                 profile={profile}
+                syncStatus={syncStatus}
+                isCloudSignedIn={isCloudSignedIn}
+                onSyncNow={handleSyncNow}
+                onLinkGoogle={handleLinkGoogle}
                 onOpenVault={(lvl) => setVaultLevel(lvl || 'ALL')}
                 onOpenAvatarModal={() => setShowAvatarModal(true)}
                 onUpdateAccount={handleUpdateAccount}
@@ -359,14 +492,15 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Fixed Rounded-Rectangle Glassmorphism 3-Item Navigation Bar */}
+      {/* Fixed Rounded-Rectangle Glassmorphism 4-Item Navigation Bar */}
       <BottomNav
         activeTab={activeTab}
         onSelect={setActiveTab}
         soundEnabled={profile.soundEnabled}
+        uiLanguage={profile.uiLanguage}
       />
 
-      {/* Interactive Lesson Arena */}
+      {/* Interactive Vocabulary Lesson Arena */}
       {activeLesson && (
         <LessonPlayer
           lesson={activeLesson}
@@ -381,7 +515,22 @@ export default function App() {
         />
       )}
 
-      {/* Full A1-C2 + Oxford 3000/5000 + C2 Vocabulary Explorer Modal */}
+      {/* Interactive Grammar Unit Arena */}
+      {activeGrammarUnit && (
+        <GrammarLessonPlayer
+          unit={activeGrammarUnit}
+          soundEnabled={profile.soundEnabled}
+          voiceEnabled={profile.voiceEnabled}
+          voiceSpeed={profile.voiceSpeed}
+          uiLanguage={profile.uiLanguage}
+          onChangeVoiceSpeed={(speed) => handleUpdatePreferences({ voiceSpeed: speed })}
+          onTriggerBurst={triggerBurst}
+          onComplete={handleCompleteLesson}
+          onClose={() => setActiveGrammarUnit(null)}
+        />
+      )}
+
+      {/* Full Vocabulary Explorer Modal */}
       {vaultLevel && (
         <VocabVaultModal
           initialLevel={vaultLevel}
@@ -400,6 +549,7 @@ export default function App() {
           currentAvatarId={profile.avatarId}
           currentCustomUrl={profile.customAvatarUrl}
           soundEnabled={profile.soundEnabled}
+          uiLanguage={profile.uiLanguage}
           onSelectPreset={(avatarId) =>
             handleUpdateAccount({ avatarId, customAvatarUrl: undefined })
           }

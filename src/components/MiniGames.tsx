@@ -11,6 +11,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { LessonExercise, UiLanguage, VocabWord } from '../types/learning';
+import { getUi } from '../lib/i18n';
 import { soundEngine } from '../lib/sound';
 import { triggerConfettiBurst } from './VfxOverlay';
 
@@ -52,7 +53,7 @@ export function MiniGameStage(props: MiniGameProps) {
 }
 
 /* ============================================================================
-   1. البطاقة الغامضة
+   1. Mystery Card
    ============================================================================ */
 function MysteryCardGame({
   exercise,
@@ -64,6 +65,9 @@ function MysteryCardGame({
   onTriggerBurst,
   onFinishMiniGame,
 }: MiniGameProps) {
+  const t = getUi(uiLanguage);
+  const mg = t.minigames;
+
   const cardWords = useMemo(() => {
     const pool = exercise.miniGamePool?.length ? exercise.miniGamePool : allLessonWords;
     return shuffleArr(pool).slice(0, 4);
@@ -87,7 +91,7 @@ function MysteryCardGame({
     soundEngine.playCardFlip(soundEnabled);
     const revealed = cardWords[idx];
     soundEngine.speakWord(revealed.word, voiceEnabled, voiceSpeed);
-    onTriggerBurst('كُشفت البطاقة!', '#FF9600', revealed.word);
+    onTriggerBurst(mg.cardRevealed, '#FF9600', revealed.word);
   };
 
   const handleAnswer = (pickedId: string) => {
@@ -98,7 +102,7 @@ function MysteryCardGame({
     if (isCorrect) {
       soundEngine.playCorrect(soundEnabled, 2);
       triggerConfettiBurst('stars');
-      onTriggerBurst('+15 XP إضافية!', '#58CC02', 'اختيار موفق');
+      onTriggerBurst(mg.bonusXp, '#58CC02', mg.goodChoice);
     } else {
       soundEngine.playWrong(soundEnabled);
     }
@@ -119,14 +123,13 @@ function MysteryCardGame({
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-extrabold text-[#FF9600] flex items-center gap-1.5">
           <Sparkles className="w-4 h-4" />
-          <span>لعبة البطاقة الغامضة</span>
+          <span>{mg.mysteryTitle}</span>
         </span>
         <span className="text-xs font-bold text-[var(--text-secondary)]">
-          {pickedIdx === null ? 'اختر أي بطاقة عشوائية!' : 'طابق الكلمة الظاهرة مع وصفها!'}
+          {pickedIdx === null ? mg.mysteryPickPrompt : mg.mysteryMatchPrompt}
         </span>
       </div>
 
-      {/* 4 بطاقات غامضة */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {cardWords.map((card, idx) => {
           const isPicked = pickedIdx === idx;
@@ -163,7 +166,7 @@ function MysteryCardGame({
                 <div className="space-y-1.5">
                   <HelpCircle className="w-7 h-7 mx-auto opacity-90" />
                   <div className="font-display font-extrabold text-xs">
-                    بطاقة #{idx + 1}
+                    {mg.cardLabel(idx + 1)}
                   </div>
                 </div>
               )}
@@ -172,7 +175,6 @@ function MysteryCardGame({
         })}
       </div>
 
-      {/* تحدي الكلمة المكشوفة */}
       <AnimatePresence>
         {chosenWord && (
           <motion.div
@@ -183,11 +185,11 @@ function MysteryCardGame({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-bold text-[var(--text-secondary)]">
-                  أي وصف يطابق كلمة{' '}
+                  {mg.whichDefinition}{' '}
                   <strong dir="ltr" className="font-latin text-[var(--text-primary)]">
                     {chosenWord.word}
                   </strong>
-                  ؟
+                  ?
                 </div>
                 <div className="text-xs font-bold text-[#F97316] mt-0.5">
                   {chosenWord.translations[uiLanguage === 'en' ? 'ar' : uiLanguage]}
@@ -197,7 +199,7 @@ function MysteryCardGame({
                 type="button"
                 onClick={() => soundEngine.speakWord(chosenWord.word, true, voiceSpeed)}
                 className="btn-3d-blue w-10 h-10 rounded-xl flex items-center justify-center shrink-0 cursor-pointer"
-                aria-label={`نطق ${chosenWord.word}`}
+                aria-label={t.daily.speakWordAria(chosenWord.word)}
               >
                 <Volume2 className="w-4 h-4" />
               </button>
@@ -219,9 +221,10 @@ function MysteryCardGame({
                   <button
                     key={opt.id}
                     type="button"
+                    dir="ltr"
                     disabled={resolved}
                     onClick={() => handleAnswer(opt.id)}
-                    className={`rounded-xl p-3 text-right text-xs sm:text-sm font-bold transition-all cursor-pointer ${cls}`}
+                    className={`font-latin rounded-xl p-3 text-left text-xs sm:text-sm font-bold transition-all cursor-pointer ${cls}`}
                   >
                     {opt.definition}
                   </button>
@@ -236,7 +239,7 @@ function MysteryCardGame({
 }
 
 /* ============================================================================
-   2. ترتيب الحروف
+   2. Word Scramble
    ============================================================================ */
 function WordScrambleGame({
   exercise,
@@ -247,6 +250,8 @@ function WordScrambleGame({
   onTriggerBurst,
   onFinishMiniGame,
 }: MiniGameProps) {
+  const t = getUi(uiLanguage);
+  const mg = t.minigames;
   const target = exercise.word;
   const letters = useMemo(() => {
     const clean = target.word.replace(/[^a-zA-Z]/g, '').toUpperCase().split('');
@@ -277,7 +282,7 @@ function WordScrambleGame({
         soundEngine.playCorrect(soundEnabled, 2);
         soundEngine.speakWord(target.word, voiceEnabled, voiceSpeed);
         triggerConfettiBurst('stars');
-        onTriggerBurst('+15 XP!', '#58CC02', 'تهجئة صحيحة');
+        onTriggerBurst('+15 XP!', '#58CC02', mg.correctSpelling);
         setTimeout(() => onFinishMiniGame(1, 1), 900);
       } else {
         setStatus('wrong');
@@ -295,9 +300,9 @@ function WordScrambleGame({
       <div className="rounded-2xl bg-[var(--bg-surface-muted)] p-4 flex items-center justify-between gap-3">
         <div>
           <div className="text-xs font-extrabold text-[#1CB0F6] mb-1">
-            تلميح ({target.pos})
+            {mg.scrambleHint(target.pos)}
           </div>
-          <p className="text-sm sm:text-base font-bold text-[var(--text-primary)]">
+          <p dir="ltr" className="font-latin text-sm sm:text-base font-bold text-[var(--text-primary)] text-left">
             {target.definition}
           </p>
           <p className="text-xs font-bold text-[#F97316] mt-0.5">
@@ -307,14 +312,13 @@ function WordScrambleGame({
         <button
           type="button"
           onClick={() => soundEngine.speakWord(target.word, true, voiceSpeed)}
-          aria-label="سماع النطق كمساعدة"
+          aria-label={t.daily.speakWordAria(target.word)}
           className="btn-3d-blue w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 cursor-pointer"
         >
           <Volume2 className="w-5 h-5" />
         </button>
       </div>
 
-      {/* خانات الأحرف (اتجاه إنجليزي LTR دائماً) */}
       <div
         dir="ltr"
         className={`min-h-[64px] rounded-2xl border-2 border-dashed p-3 flex flex-wrap items-center justify-center gap-2 transition-colors ${
@@ -326,8 +330,11 @@ function WordScrambleGame({
         }`}
       >
         {pickedIds.length === 0 ? (
-          <span dir="rtl" className="text-xs font-bold text-[var(--text-secondary)]">
-            اضغط على الأحرف بالترتيب لتكوين الكلمة ({cleanTargetStr.length} أحرف)
+          <span
+            dir={uiLanguage === 'ar' ? 'rtl' : 'ltr'}
+            className="text-xs font-bold text-[var(--text-secondary)]"
+          >
+            {mg.scrambleEmpty(cleanTargetStr.length)}
           </span>
         ) : (
           pickedIds.map((id) => {
@@ -352,7 +359,6 @@ function WordScrambleGame({
         )}
       </div>
 
-      {/* بنك الأحرف المبعثرة */}
       <div dir="ltr" className="flex flex-wrap items-center justify-center gap-2.5">
         {letters.map((tile) => {
           const used = pickedIds.includes(tile.id);
@@ -382,14 +388,14 @@ function WordScrambleGame({
           className="inline-flex items-center gap-1 font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer disabled:opacity-40"
         >
           <RotateCcw className="w-3.5 h-3.5" />
-          <span>مسح ({builtWord.length}/{cleanTargetStr.length})</span>
+          <span>{mg.clearBtn(builtWord.length, cleanTargetStr.length)}</span>
         </button>
         <button
           type="button"
           onClick={() => onFinishMiniGame(0, 1)}
           className="font-bold text-[var(--text-secondary)] hover:text-[#1CB0F6] cursor-pointer"
         >
-          تخطي التحدي ←
+          {mg.skipBtn}
         </button>
       </div>
     </div>
@@ -397,7 +403,7 @@ function WordScrambleGame({
 }
 
 /* ============================================================================
-   3. لعبة الذاكرة (٦ بطاقات)
+   3. Memory Flip
    ============================================================================ */
 interface MemoryCardItem {
   uid: string;
@@ -412,9 +418,12 @@ function MemoryFlipGame({
   soundEnabled,
   voiceEnabled,
   voiceSpeed,
+  uiLanguage,
   onTriggerBurst,
   onFinishMiniGame,
 }: MiniGameProps) {
+  const mg = getUi(uiLanguage).minigames;
+
   const cards = useMemo<MemoryCardItem[]>(() => {
     const source = shuffleArr(
       exercise.miniGamePool?.length ? exercise.miniGamePool : allLessonWords
@@ -466,7 +475,7 @@ function MemoryFlipGame({
         setFlippedUids([]);
         setLocked(false);
         soundEngine.playCorrect(soundEnabled, nextMatched.length);
-        onTriggerBurst('+10 XP', '#58CC02', 'تمت المطابقة!');
+        onTriggerBurst('+10 XP', '#58CC02', mg.matchedBurst);
 
         if (nextMatched.length === 3) {
           triggerConfettiBurst('stars');
@@ -488,10 +497,8 @@ function MemoryFlipGame({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between text-xs font-bold text-[var(--text-secondary)]">
-        <span className="text-[#8B5CF6] font-extrabold">لعبة الذاكرة السريعة</span>
-        <span className="font-mono-num">
-          تطابق {matchedPairIds.length} / 3 أزواج
-        </span>
+        <span className="text-[#8B5CF6] font-extrabold">{mg.memoryTitle}</span>
+        <span className="font-mono-num">{mg.memoryPairs(matchedPairIds.length)}</span>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -515,17 +522,17 @@ function MemoryFlipGame({
             >
               {isRevealed ? (
                 <span
-                  dir={card.kind === 'word' ? 'ltr' : undefined}
+                  dir="ltr"
                   className={
                     card.kind === 'word'
                       ? 'font-latin font-black text-base'
-                      : 'text-xs font-bold leading-snug'
+                      : 'font-latin text-xs font-bold leading-snug'
                   }
                 >
                   {card.label}
                 </span>
               ) : (
-                <span className="font-display font-black text-2xl opacity-90">؟</span>
+                <span className="font-display font-black text-2xl opacity-90">?</span>
               )}
             </motion.button>
           );
@@ -536,7 +543,7 @@ function MemoryFlipGame({
 }
 
 /* ============================================================================
-   4. عجلة الحظ
+   4. Word Wheel
    ============================================================================ */
 function WordWheelGame({
   exercise,
@@ -544,9 +551,13 @@ function WordWheelGame({
   soundEnabled,
   voiceEnabled,
   voiceSpeed,
+  uiLanguage,
   onTriggerBurst,
   onFinishMiniGame,
 }: MiniGameProps) {
+  const t = getUi(uiLanguage);
+  const mg = t.minigames;
+
   const wheelWords = useMemo(() => {
     const pool = exercise.miniGamePool?.length ? exercise.miniGamePool : allLessonWords;
     return shuffleArr(pool).slice(0, 4);
@@ -577,7 +588,7 @@ function WordWheelGame({
       setLandedWord(winner);
       soundEngine.playUnlock(soundEnabled);
       soundEngine.speakWord(winner.word, voiceEnabled, voiceSpeed);
-      onTriggerBurst('تحدي العجلة!', '#1CB0F6', winner.word);
+      onTriggerBurst(mg.wheelChallenge, '#1CB0F6', winner.word);
     }, 1000);
   };
 
@@ -588,7 +599,7 @@ function WordWheelGame({
     if (ok) {
       soundEngine.playCorrect(soundEnabled, 2);
       triggerConfettiBurst('stars');
-      onTriggerBurst('+15 XP إضافية!', '#58CC02');
+      onTriggerBurst(mg.bonusXp, '#58CC02');
     } else {
       soundEngine.playWrong(soundEnabled);
     }
@@ -633,7 +644,7 @@ function WordWheelGame({
             className="btn-3d-blue px-7 py-3 rounded-2xl font-display font-black text-sm flex items-center gap-2 cursor-pointer disabled:opacity-60"
           >
             <Dices className="w-4 h-4" />
-            <span>{spinning ? 'جارٍ التدوير...' : 'أدر عجلة الحظ!'}</span>
+            <span>{spinning ? mg.spinningBtn : mg.spinBtn}</span>
           </button>
         </div>
       ) : (
@@ -644,7 +655,7 @@ function WordWheelGame({
         >
           <div className="rounded-2xl bg-[var(--bg-surface-muted)] p-4 flex items-center justify-between">
             <div>
-              <div className="text-xs font-bold text-[#1CB0F6]">الكلمة المختارة:</div>
+              <div className="text-xs font-bold text-[#1CB0F6]">{mg.pickedWord}</div>
               <div dir="ltr" className="font-latin font-black text-2xl text-[var(--text-primary)]">
                 {landedWord.word}
               </div>
@@ -653,7 +664,7 @@ function WordWheelGame({
               type="button"
               onClick={() => soundEngine.speakWord(landedWord.word, true, voiceSpeed)}
               className="btn-3d-blue w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer"
-              aria-label={`نطق ${landedWord.word}`}
+              aria-label={t.daily.speakWordAria(landedWord.word)}
             >
               <Volume2 className="w-4 h-4" />
             </button>
@@ -675,9 +686,10 @@ function WordWheelGame({
                 <button
                   key={opt.id}
                   type="button"
+                  dir="ltr"
                   disabled={Boolean(pickedOption)}
                   onClick={() => handlePick(opt.id)}
-                  className={`rounded-xl p-3 text-right text-xs sm:text-sm font-bold cursor-pointer transition-all ${cls}`}
+                  className={`font-latin rounded-xl p-3 text-left text-xs sm:text-sm font-bold cursor-pointer transition-all ${cls}`}
                 >
                   {opt.definition}
                 </button>
@@ -691,7 +703,7 @@ function WordWheelGame({
 }
 
 /* ============================================================================
-   5. تحدي البرق السريع
+   5. Speed Blitz
    ============================================================================ */
 function SpeedBlitzGame({
   exercise,
@@ -699,9 +711,12 @@ function SpeedBlitzGame({
   soundEnabled,
   voiceEnabled,
   voiceSpeed,
+  uiLanguage,
   onTriggerBurst,
   onFinishMiniGame,
 }: MiniGameProps) {
+  const mg = getUi(uiLanguage).minigames;
+
   const rounds = useMemo(() => {
     const pool = shuffleArr(
       exercise.miniGamePool?.length ? exercise.miniGamePool : allLessonWords
@@ -732,7 +747,7 @@ function SpeedBlitzGame({
 
     if (ok) {
       soundEngine.playStreak(soundEnabled);
-      onTriggerBurst('⚡ سريع!', '#FF9600');
+      onTriggerBurst(mg.blitzFast, '#FF9600');
     } else {
       soundEngine.playWrong(soundEnabled);
     }
@@ -757,20 +772,20 @@ function SpeedBlitzGame({
       <div className="flex items-center justify-between text-xs font-extrabold">
         <span className="text-[#FF9600] flex items-center gap-1">
           <Zap className="w-4 h-4 fill-[#FF9600]" />
-          <span>البرق السريع · الجولة {roundIdx + 1}/{rounds.length}</span>
+          <span>{mg.blitzTitle(roundIdx + 1, rounds.length)}</span>
         </span>
         <span className="font-mono-num text-[#58CC02] flex items-center gap-1">
           <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>{hits} إصابات</span>
+          <span>{mg.blitzHits(hits)}</span>
         </span>
       </div>
 
       <div className="rounded-2xl bg-[var(--bg-surface-muted)] p-5 text-center space-y-2">
         <div className="text-xs font-bold text-[var(--text-secondary)]">
-          اختر الكلمة الإنجليزية المطابقة لهذا الوصف:
+          {mg.blitzPrompt}
         </div>
-        <div className="font-display font-extrabold text-base sm:text-lg text-[var(--text-primary)]">
-          «{current.target.definition}»
+        <div dir="ltr" className="font-latin font-extrabold text-base sm:text-lg text-[var(--text-primary)]">
+          “{current.target.definition}”
         </div>
       </div>
 

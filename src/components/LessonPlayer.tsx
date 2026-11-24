@@ -11,8 +11,9 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
-import { LessonUnit, UiLanguage } from '../types/learning';
+import { LessonExercise, LessonUnit, UiLanguage } from '../types/learning';
 import { generateLessonExercises } from '../data/curriculum';
+import { getUi } from '../lib/i18n';
 import { soundEngine, VOICE_SPEED_OPTIONS } from '../lib/sound';
 import { MiniGameStage } from './MiniGames';
 import { triggerConfettiBurst } from './VfxOverlay';
@@ -48,6 +49,11 @@ export function LessonPlayer({
   onComplete,
   onClose,
 }: LessonPlayerProps) {
+  const t = getUi(uiLanguage);
+  const lp = t.lessonPlayer;
+  const isRtl = uiLanguage === 'ar';
+  const lessonTitle = t.coreLessons[lesson.id]?.title || lesson.title;
+
   const exercises = useMemo(() => generateLessonExercises(lesson), [lesson]);
   const [step, setStep] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -57,7 +63,6 @@ export function LessonPlayer({
   const [totalGraded, setTotalGraded] = useState(0);
   const [finished, setFinished] = useState(false);
 
-  // حالة تمرين المطابقة
   const [selectedLeftId, setSelectedLeftId] = useState<string | null>(null);
   const [matchedIds, setMatchedIds] = useState<string[]>([]);
   const [wrongPairFlash, setWrongPairFlash] = useState<string | null>(null);
@@ -94,25 +99,50 @@ export function LessonPlayer({
     currentExercise?.type === 'word-wheel' ||
     currentExercise?.type === 'speed-blitz';
 
+  const getLocalizedPrompt = (ex: LessonExercise) => {
+    switch (ex.type) {
+      case 'intro':
+        return lp.introPrompt;
+      case 'choice':
+        return lp.choicePrompt(ex.word.word);
+      case 'listen':
+        return lesson.id.startsWith('ox-deck-')
+          ? lp.deckListenPrompt(lesson.level)
+          : lp.listenPrompt;
+      case 'context':
+        return lp.contextPrompt;
+      case 'match':
+        return lp.coachMatch;
+      case 'mystery-card':
+      case 'scramble':
+      case 'memory-flip':
+      case 'word-wheel':
+      case 'speed-blitz':
+        return lp.minigamePrompts[ex.type] || ex.prompt;
+      default:
+        return ex.prompt;
+    }
+  };
+
   const coachTip = useMemo(() => {
     if (checkedState === 'correct') {
-      if (combo >= 3) return `سلسلة رائعة ${combo}x! واصل هذا الإيقاع المتألق.`;
-      return 'أحسنت! إجابة دقيقة ومميزة.';
+      if (combo >= 3) return lp.coachCorrectCombo(combo);
+      return lp.coachCorrect;
     }
     if (checkedState === 'wrong') {
-      return 'لاحظ الإجابة الصحيحة المظللة أدناه — التكرار يرسّخ الحفظ.';
+      return lp.coachWrong;
     }
     if (isMiniGame) {
-      return 'تحدي لعبة مصغرة عشوائية لتثبيت الكلمات بمتعة!';
+      return lp.coachMinigame;
     }
     if (currentExercise?.type === 'intro') {
-      return 'استمع بهدوء إلى النطق الصحيح وتأمل الجملة التوضيحية.';
+      return lp.coachIntro;
     }
     if (currentExercise?.type === 'match') {
-      return 'اضغط على الكلمة ثم اختر معناها المطابق.';
+      return lp.coachMatch;
     }
-    return 'اختر الإجابة الأنسب من الخيارات التالية.';
-  }, [checkedState, combo, currentExercise, isMiniGame]);
+    return lp.coachDefault;
+  }, [checkedState, combo, currentExercise, isMiniGame, lp]);
 
   const handleCheck = () => {
     if (!currentExercise) return;
@@ -137,7 +167,7 @@ export function LessonPlayer({
       onTriggerBurst(
         nextCombo >= 2 ? `+10 XP · ${nextCombo}x!` : '+10 XP',
         '#58CC02',
-        nextCombo >= 3 ? 'سلسلة مشتعلة!' : undefined
+        nextCombo >= 3 ? lp.coachCorrectCombo(nextCombo) : undefined
       );
       if (nextCombo >= 3) {
         soundEngine.playStreak(soundEnabled);
@@ -224,12 +254,13 @@ export function LessonPlayer({
 
   return (
     <div
+      dir={isRtl ? 'rtl' : 'ltr'}
       role="dialog"
       aria-modal="true"
-      aria-label={`الدرس ${lesson.order}: ${lesson.title}`}
+      aria-label={lp.lessonHeading(lesson.order, lessonTitle)}
       className="fixed inset-0 z-50 bg-[var(--bg-canvas)] flex flex-col overflow-y-auto"
     >
-      {/* شريط التقدم العلوي */}
+      {/* Top Progress Bar */}
       <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 pt-5 pb-3 flex items-center gap-3 flex-wrap sm:flex-nowrap">
         <button
           type="button"
@@ -237,13 +268,12 @@ export function LessonPlayer({
             soundEngine.playClick(soundEnabled);
             onClose();
           }}
-          aria-label="الخروج من الدرس"
+          aria-label={lp.exitAria}
           className="w-11 h-11 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors shrink-0"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {/* شريط التقدم */}
         <div
           role="progressbar"
           aria-valuenow={progressPercent}
@@ -259,9 +289,8 @@ export function LessonPlayer({
           />
         </div>
 
-        {/* سرعة الصوت */}
         <div className="flex items-center gap-1 px-2 py-1 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shrink-0">
-          <Gauge className="w-3.5 h-3.5 text-[#1CB0F6] ml-1" />
+          <Gauge className="w-3.5 h-3.5 text-[#1CB0F6] mx-1" />
           {VOICE_SPEED_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -281,7 +310,6 @@ export function LessonPlayer({
           ))}
         </div>
 
-        {/* مؤشر التتابع */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] font-mono-num text-sm font-bold shrink-0">
           <Flame
             className={`w-4 h-4 ${
@@ -292,7 +320,7 @@ export function LessonPlayer({
         </div>
       </div>
 
-      {/* مسرح التمرين الرئيسي */}
+      {/* Main Exercise Arena */}
       <div className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 py-4 flex flex-col justify-between">
         {finished ? (
           <motion.div
@@ -301,7 +329,6 @@ export function LessonPlayer({
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
             className="my-auto rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 sm:p-10 text-center shadow-lg"
           >
-            {/* النجوم المكتسبة */}
             <div className="flex items-center justify-center gap-3 mb-5">
               {[1, 2, 3].map((s) => (
                 <motion.div
@@ -328,19 +355,19 @@ export function LessonPlayer({
 
             <div className="inline-flex items-center gap-2 text-[#58CC02] font-display font-black text-sm mb-2">
               <Sparkles className="w-4 h-4" />
-              <span>اكتمل الدرس بنجاح!</span>
+              <span>{lp.completedBadge}</span>
             </div>
             <h2 className="font-display font-black text-2xl sm:text-3xl text-[var(--text-primary)] mb-2">
-              الدرس {lesson.order} · {lesson.title}
+              {lp.lessonHeading(lesson.order, lessonTitle)}
             </h2>
             <p className="text-sm text-[var(--text-secondary)] mb-8">
-              تدرّبت على {lesson.words.length} كلمة في المستوى {lesson.level}.
+              {lp.practicedSummary(lesson.words.length, lesson.level)}
             </p>
 
             <div className="grid grid-cols-3 gap-3 mb-8">
               <div className="rounded-2xl bg-[var(--bg-surface-muted)] p-4">
                 <div className="text-xs font-bold text-[var(--text-secondary)] mb-1">
-                  النقاط المكتسبة
+                  {lp.xpEarnedLabel}
                 </div>
                 <div dir="ltr" className="font-mono-num text-2xl font-extrabold text-[#FF9600]">
                   +{lesson.xpReward + (combo >= 2 ? 10 : 0)}
@@ -348,7 +375,7 @@ export function LessonPlayer({
               </div>
               <div className="rounded-2xl bg-[var(--bg-surface-muted)] p-4">
                 <div className="text-xs font-bold text-[var(--text-secondary)] mb-1">
-                  الدقة
+                  {lp.accuracyLabel}
                 </div>
                 <div dir="ltr" className="font-mono-num text-2xl font-extrabold text-[#58CC02]">
                   {accuracyPct}%
@@ -356,7 +383,7 @@ export function LessonPlayer({
               </div>
               <div className="rounded-2xl bg-[var(--bg-surface-muted)] p-4">
                 <div className="text-xs font-bold text-[var(--text-secondary)] mb-1">
-                  الكلمات
+                  {lp.wordsLabel}
                 </div>
                 <div dir="ltr" className="font-mono-num text-2xl font-extrabold text-[#1CB0F6]">
                   {lesson.words.length}
@@ -372,13 +399,12 @@ export function LessonPlayer({
               }}
               className="btn-3d-green w-full sm:w-auto px-10 py-4 rounded-2xl font-display font-black text-base cursor-pointer"
             >
-              العودة إلى مسار التعلم
+              {lp.backToPathBtn}
             </button>
           </motion.div>
         ) : (
           <>
             <div className="space-y-4">
-              {/* شريط التوجيه المختصر */}
               <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] px-4 py-3 flex items-center justify-between gap-3 shadow-xs">
                 <div className="flex items-center gap-2.5 text-xs sm:text-sm font-bold text-[var(--text-secondary)]">
                   <Sparkles className="w-4 h-4 text-[#1CB0F6] shrink-0" />
@@ -399,13 +425,13 @@ export function LessonPlayer({
                   className="rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-6 sm:p-8 shadow-sm"
                 >
                   <div className="text-xs font-bold text-[#1CB0F6] mb-2">
-                    المستوى {lesson.level} · الدرس {lesson.order} · {lesson.title}
+                    {t.home.levelLabel(lesson.level)} · {lp.lessonHeading(lesson.order, lessonTitle)}
                   </div>
                   <h2 className="font-display font-extrabold text-xl sm:text-2xl text-[var(--text-primary)] mb-5">
-                    {currentExercise.prompt}
+                    {getLocalizedPrompt(currentExercise)}
                   </h2>
 
-                  {/* 1: بطاقة تقديم الكلمة */}
+                  {/* 1: Intro */}
                   {currentExercise.type === 'intro' && (
                     <div className="space-y-5">
                       <div className="rounded-2xl bg-[var(--bg-surface-muted)] p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -424,7 +450,7 @@ export function LessonPlayer({
                               {currentExercise.word.pos}
                             </span>
                           </div>
-                          <p className="mt-2 text-base font-bold text-[var(--text-primary)]">
+                          <p dir="ltr" className="mt-2 text-base font-bold text-[var(--text-primary)] text-left">
                             {currentExercise.word.definition}
                           </p>
                           <p className="mt-1 text-sm font-bold text-[#F97316]">
@@ -438,18 +464,18 @@ export function LessonPlayer({
                             onClick={() =>
                               soundEngine.speakWord(currentExercise.word.word, true, voiceSpeed)
                             }
-                            aria-label="استماع لنطق الكلمة"
+                            aria-label={t.daily.speakWordAria(currentExercise.word.word)}
                             className="btn-3d-blue px-4 py-3 rounded-2xl flex items-center gap-2 font-bold text-sm cursor-pointer"
                           >
                             <Volume2 className="w-5 h-5" />
-                            <span>استمع</span>
+                            <span>{lp.listenBtn}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() =>
                               soundEngine.speakWord(currentExercise.word.word, true, 0.6)
                             }
-                            aria-label="استماع ببطء"
+                            aria-label={t.daily.speakSlowAria(currentExercise.word.word)}
                             className="btn-3d-neutral px-3 py-3 rounded-2xl flex items-center justify-center cursor-pointer"
                           >
                             <Turtle className="w-5 h-5 text-[#1CB0F6]" />
@@ -469,7 +495,7 @@ export function LessonPlayer({
                           onClick={() =>
                             soundEngine.speakWord(currentExercise.word.example, true, voiceSpeed)
                           }
-                          aria-label="سماع جملة المثال"
+                          aria-label={t.daily.speakWordAria(currentExercise.word.example)}
                           className="w-10 h-10 rounded-xl bg-[var(--bg-surface-muted)] hover:bg-[#1CB0F6]/15 text-[#1CB0F6] flex items-center justify-center shrink-0 cursor-pointer"
                         >
                           <Volume2 className="w-4 h-4" />
@@ -478,7 +504,7 @@ export function LessonPlayer({
                     </div>
                   )}
 
-                  {/* 2 & 3: اختيار المعنى أو الاستماع */}
+                  {/* 2 & 3: Choice / Listen */}
                   {(currentExercise.type === 'choice' || currentExercise.type === 'listen') && (
                     <div className="space-y-4">
                       {currentExercise.type === 'listen' ? (
@@ -491,18 +517,18 @@ export function LessonPlayer({
                             className="btn-3d-blue px-6 py-4 rounded-2xl flex items-center gap-3 font-display font-extrabold text-base cursor-pointer"
                           >
                             <Volume2 className="w-6 h-6" />
-                            <span>تشغيل الصوت ({voiceSpeed}x)</span>
+                            <span>{lp.playAudioBtn(voiceSpeed)}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() =>
                               soundEngine.speakWord(currentExercise.word.word, true, 0.6)
                             }
-                            aria-label="تشغيل ببطء"
+                            aria-label={t.daily.speakSlowAria(currentExercise.word.word)}
                             className="btn-3d-neutral px-4 py-4 rounded-2xl flex items-center gap-2 font-bold text-sm cursor-pointer"
                           >
                             <Turtle className="w-5 h-5 text-[#1CB0F6]" />
-                            <span>بطيء</span>
+                            <span>{lp.slowBtn}</span>
                           </button>
                         </div>
                       ) : (
@@ -513,7 +539,7 @@ export function LessonPlayer({
                               soundEngine.speakWord(currentExercise.word.word, true, voiceSpeed)
                             }
                             className="w-11 h-11 rounded-2xl bg-[#1CB0F6]/12 text-[#1CB0F6] flex items-center justify-center cursor-pointer hover:bg-[#1CB0F6]/20 transition-colors"
-                            aria-label="سماع الكلمة"
+                            aria-label={t.daily.speakWordAria(currentExercise.word.word)}
                           >
                             <Volume2 className="w-5 h-5" />
                           </button>
@@ -564,7 +590,7 @@ export function LessonPlayer({
                     </div>
                   )}
 
-                  {/* 4: إكمال الجملة من السياق */}
+                  {/* 4: Context */}
                   {currentExercise.type === 'context' && (
                     <div className="space-y-5">
                       <div
@@ -609,7 +635,7 @@ export function LessonPlayer({
                     </div>
                   )}
 
-                  {/* 5: مطابقة الأزواج */}
+                  {/* 5: Match */}
                   {currentExercise.type === 'match' && currentExercise.matchPairs && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2.5">
@@ -649,9 +675,10 @@ export function LessonPlayer({
                             <button
                               key={`m-${pair.id}`}
                               type="button"
+                              dir="ltr"
                               disabled={isMatched || !selectedLeftId}
                               onClick={() => handleMatchRightTap(pair.id)}
-                              className={`w-full rounded-2xl p-3.5 text-sm font-semibold text-right transition-all cursor-pointer border-2 ${
+                              className={`font-latin w-full rounded-2xl p-3.5 text-sm font-semibold text-left transition-all cursor-pointer border-2 ${
                                 isMatched
                                   ? 'bg-[#58CC02]/12 border-[#58CC02]/50 text-[#46A302] dark:text-[#7CE826] opacity-70'
                                   : isFlashing
@@ -667,7 +694,7 @@ export function LessonPlayer({
                     </div>
                   )}
 
-                  {/* الألعاب المصغرة العشوائية */}
+                  {/* Mini-Games */}
                   {isMiniGame && (
                     <MiniGameStage
                       exercise={currentExercise}
@@ -684,20 +711,20 @@ export function LessonPlayer({
               </AnimatePresence>
             </div>
 
-            {/* شريط التحقق والاستمرار السفلي */}
+            {/* Footer Controls */}
             <div className="mt-6 pt-4 border-t border-[var(--border-subtle)]">
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 {checkedState === 'correct' && (
                   <div className="flex items-center gap-2.5 text-[#46A302] dark:text-[#7CE826] font-display font-extrabold text-base">
                     <CheckCircle2 className="w-6 h-6 shrink-0" />
-                    <span>ممتاز! واصل التقدم!</span>
+                    <span>{lp.excellentFeedback}</span>
                   </div>
                 )}
                 {checkedState === 'wrong' && (
                   <div className="flex items-center gap-2.5 text-[#dc2626] dark:text-[#FF7878] font-bold text-sm">
                     <XCircle className="w-6 h-6 shrink-0" />
                     <span>
-                      الإجابة الصحيحة:{' '}
+                      {lp.correctAnswerWas}{' '}
                       <strong dir="ltr" className="font-latin font-extrabold">
                         {currentExercise.correctAnswer}
                       </strong>
@@ -707,12 +734,15 @@ export function LessonPlayer({
                 {checkedState === 'idle' && (
                   <div className="text-xs font-bold text-[var(--text-secondary)]">
                     {isMiniGame
-                      ? 'أكمل تحدي اللعبة المصغرة أعلاه للمتابعة'
+                      ? lp.minigamePromptHint
                       : currentExercise.type === 'intro'
-                      ? 'استمع للنطق وتأمل المثال ثم تابع'
+                      ? lp.introHint
                       : currentExercise.type === 'match'
-                      ? `تمت مطابقة ${matchedIds.length} من ${currentExercise.matchPairs?.length ?? 4}`
-                      : 'اختر إجابة ثم اضغط تحقق'}
+                      ? lp.matchedProgress(
+                          matchedIds.length,
+                          currentExercise.matchPairs?.length ?? 4
+                        )
+                      : lp.selectAnswerHint}
                   </div>
                 )}
 
@@ -723,7 +753,7 @@ export function LessonPlayer({
                       onClick={handleCheck}
                       className="btn-3d-green w-full sm:w-auto px-8 py-3.5 rounded-2xl font-display font-black text-base cursor-pointer"
                     >
-                      فهمت، التالي
+                      {lp.understoodNextBtn}
                     </button>
                   ) : checkedState !== 'idle' ? (
                     <button
@@ -736,7 +766,7 @@ export function LessonPlayer({
                         checkedState === 'correct' ? 'btn-3d-green' : 'btn-3d-blue'
                       }`}
                     >
-                      متابعة
+                      {lp.continueBtn}
                     </button>
                   ) : !isMiniGame && currentExercise.type !== 'match' ? (
                     <button
@@ -749,7 +779,7 @@ export function LessonPlayer({
                           : 'bg-[var(--bg-surface-muted)] text-[var(--text-secondary)] cursor-not-allowed'
                       }`}
                     >
-                      تحقق من الإجابة
+                      {lp.checkBtn}
                     </button>
                   ) : null}
                 </div>

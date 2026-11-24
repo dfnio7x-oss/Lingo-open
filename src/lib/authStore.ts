@@ -1,12 +1,15 @@
-import { UserProfileData } from '../types/learning';
+import { UiLanguage, UserProfileData } from '../types/learning';
 import { createDefaultProfile } from './profileStore';
 import {
+  authenticateEmailCloudSession,
   ensureCloudProfileDoc,
-  ensureCloudSession,
   fetchCloudProfile,
   mergeLocalAndCloudProfiles,
+  signInWithGooglePopup,
   syncCloudProgress,
 } from './cloudSync';
+import { getUi } from './i18n';
+import { getRandomAvatarId } from '../components/avatarOptions';
 
 const ACCOUNTS_KEY = 'lingofox_accounts_v1';
 const ACTIVE_SESSION_KEY = 'lingofox_active_user_v1';
@@ -55,13 +58,17 @@ function saveAccounts(accounts: Record<string, StoredAccount>): void {
   }
 }
 
-export function validateUsernameFormat(username: string): string | null {
+export function validateUsernameFormat(
+  username: string,
+  uiLanguage: UiLanguage = 'ar'
+): string | null {
+  const t = getUi(uiLanguage).auth;
   const rawUser = username.trim();
   if (rawUser.length < MIN_USERNAME_LENGTH || rawUser.length > MAX_USERNAME_LENGTH) {
-    return `يجب أن يكون اسم المستخدم بين ${MIN_USERNAME_LENGTH} و ${MAX_USERNAME_LENGTH} حرفاً.`;
+    return t.errUsernameLength(MIN_USERNAME_LENGTH, MAX_USERNAME_LENGTH);
   }
   if (!/^[a-zA-Z0-9_.-]+$/.test(rawUser)) {
-    return 'استخدم الأحرف الإنجليزية والأرقام و (_) أو (-) أو (.) فقط.';
+    return t.errUsernameChars;
   }
   return null;
 }
@@ -86,7 +93,7 @@ export function setActiveSessionUsername(username: string | null): void {
   }
 }
 
-function normalizeProfile(
+export function normalizeProfile(
   raw: Partial<UserProfileData>,
   fallbackUsername: string
 ): UserProfileData {
@@ -99,7 +106,9 @@ function normalizeProfile(
     ...base,
     ...raw,
     avatarId:
-      raw.avatarId === 'pip-fox' || !raw.avatarId ? 'app-crest' : raw.avatarId,
+      raw.avatarId === 'pip-fox' || !raw.avatarId
+        ? getRandomAvatarId()
+        : raw.avatarId,
     lessonStars:
       raw.lessonStars && typeof raw.lessonStars === 'object' ? raw.lessonStars : {},
     completedLessons: Array.isArray(raw.completedLessons)
@@ -129,8 +138,15 @@ export function getAccountProfile(username: string): UserProfileData | null {
 export function saveAccountProfile(username: string, profile: UserProfileData): void {
   const accounts = loadAccounts();
   const key = username.trim().toLowerCase();
-  if (!accounts[key]) return;
-  accounts[key].profile = profile;
+  if (!accounts[key]) {
+    accounts[key] = {
+      username: profile.username || key,
+      passwordHash: '',
+      profile,
+    };
+  } else {
+    accounts[key].profile = profile;
+  }
   saveAccounts(accounts);
 }
 
@@ -144,100 +160,153 @@ export function deleteAccountByUsername(username: string): void {
   }
 }
 
+export async function loginWithGoogle(
+  uiLanguage: UiLanguage = 'ar',
+  mergeProfile?: UserProfileData
+): Promise<{ ok: true; profile: UserProfileData } | { ok: false; error: string }> {
+  const t = getUi(uiLanguage).auth;
+  const res = await signInWithGooglePopup(mergeProfile);
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: res.code === 'popup-closed' ? t.errGooglePopupClosed : t.errGoogleFailed,
+    };
+  }
+
+  const normalized = normalizeProfile(res.profile, res.profile.username);
+  saveAccountProfile(normalized.username, normalized);
+  setActiveSessionUsername(normalized.username.toLowerCase());
+  return { ok: true, profile: normalized };
+}
+
 export async function loginWithUsernamePassword(
   username: string,
-  password: string
+  password: string,
+  uiLanguage: UiLanguage = 'ar'
 ): Promise<{ ok: true; profile: UserProfileData } | { ok: false; error: string }> {
+  const t = getUi(uiLanguage).auth;
   const rawUser = username.trim();
   const cleanKey = rawUser.toLowerCase();
 
-  const usernameError = validateUsernameFormat(rawUser);
+  const usernameError = validateUsernameFormat(rawUser, uiLanguage);
   if (usernameError) {
     return { ok: false, error: usernameError };
   }
   if (!password) {
-    return { ok: false, error: 'الرجاء إدخال كلمة المرور.' };
+    return { ok: false, error: t.errPasswordRequired };
   }
 
   const accounts = loadAccounts();
   const found = accounts[cleanKey];
 
-  if (found) {
+  // Case 1: Account exists locally in browser storage
+  if (found && found.passwordHash) {
     const hash = await hashPassword(password);
     if (found.passwordHash !== hash) {
-      return { ok: false, error: 'كلمة المرور غير صحيحة. حاول مرة أخرى.' };
+      return { ok: false, error: t.errWrongPassword };
     }
 
     let profile = normalizeProfile(found.profile, found.username || cleanKey);
-    const cloudUid = await ensureCloudSession(rawUser, password, 'login');
-    if (cloudUid) {
+    const cloudAuth = await authenticateEmailCloudSession(rawUser, password, 'login');
+
+    if (cloudAuth.ok) {
       try {
-        const cloudData = await fetchCloudProfile(cloudUid);
-        profile = mergeLocalAndCloudProfiles(profile, cloudData, cloudUid);
+        const cloudData = await fetchCloudProfile(cloudAuth.uid);
+        profile = mergeLocalAndCloudProfiles(profile, cloudData, cloudAuth.uid);
         await ensureCloudProfileDoc(profile);
         await syncCloudProgress(profile);
       } catch {
-        profile = { ...profile, uid: cloudUid };
+        profile = { ...profile, uid: cloudAuth.uid };
       }
       saveAccountProfile(cleanKey, profile);
+    } else if (cloudAuth.reason === 'user-not-found' || cloudAuth.reason === 'wrong-password') {
+      // Local account existed before cloud auth: register it in cloud if Email/Password is enabled
+      const signupAttempt = await authenticateEmailCloudSession(rawUser, password, 'signup');
+      if (signupAttempt.ok) {
+        profile = { ...profile, uid: signupAttempt.uid };
+        await ensureCloudProfileDoc(profile).catch(() => undefined);
+        await syncCloudProgress(profile);
+        saveAccountProfile(cleanKey, profile);
+      }
     }
 
     setActiveSessionUsername(cleanKey);
     return { ok: true, profile };
   }
 
-  // Not found locally: check if account exists in Firebase Cloud (cross-device login)
-  const cloudUid = await ensureCloudSession(rawUser, password, 'login');
-  if (cloudUid) {
+  // Case 2: Cross-device login — look up in Firebase Cloud directly
+  const cloudAuth = await authenticateEmailCloudSession(rawUser, password, 'login');
+  if (cloudAuth.ok) {
+    let cloudData: Partial<UserProfileData> | null = null;
     try {
-      const cloudData = await fetchCloudProfile(cloudUid);
-      if (cloudData && cloudData.username?.toLowerCase() === cleanKey) {
-        const hydrated = normalizeProfile({ ...cloudData, uid: cloudUid }, rawUser);
-        const hash = await hashPassword(password);
-        accounts[cleanKey] = {
-          username: rawUser,
-          passwordHash: hash,
-          profile: hydrated,
-        };
-        saveAccounts(accounts);
-        setActiveSessionUsername(cleanKey);
-        return { ok: true, profile: hydrated };
-      }
+      cloudData = await fetchCloudProfile(cloudAuth.uid);
     } catch {
-      // Fall through to not-found message
+      cloudData = null;
     }
+
+    const hydrated = cloudData
+      ? normalizeProfile({ ...cloudData, uid: cloudAuth.uid }, rawUser)
+      : createDefaultProfile(cloudAuth.uid, rawUser, rawUser, { randomizeAvatar: true });
+
+    if (!cloudData) {
+      await ensureCloudProfileDoc(hydrated).catch(() => undefined);
+    }
+
+    const hash = await hashPassword(password);
+    accounts[cleanKey] = {
+      username: rawUser,
+      passwordHash: hash,
+      profile: hydrated,
+    };
+    saveAccounts(accounts);
+    setActiveSessionUsername(cleanKey);
+    return { ok: true, profile: hydrated };
   }
 
-  return { ok: false, error: 'الحساب غير موجود. تأكد من اسم المستخدم أو أنشئ حساباً جديداً.' };
+  if (cloudAuth.reason === 'operation-not-allowed') {
+    return { ok: false, error: t.errEmailProviderDisabled };
+  }
+  if (cloudAuth.reason === 'wrong-password') {
+    return { ok: false, error: t.errWrongPassword };
+  }
+  return { ok: false, error: t.errAccountNotFound };
 }
 
 export async function signUpWithUsernamePassword(
   username: string,
-  password: string
+  password: string,
+  uiLanguage: UiLanguage = 'ar'
 ): Promise<{ ok: true; profile: UserProfileData } | { ok: false; error: string }> {
+  const t = getUi(uiLanguage).auth;
   const rawUser = username.trim();
   const cleanKey = rawUser.toLowerCase();
 
-  const usernameError = validateUsernameFormat(rawUser);
+  const usernameError = validateUsernameFormat(rawUser, uiLanguage);
   if (usernameError) {
     return { ok: false, error: usernameError };
   }
   if (password.length < 4) {
-    return { ok: false, error: 'يجب أن تتكون كلمة المرور من ٤ أحرف على الأقل.' };
+    return { ok: false, error: t.errPasswordLength };
   }
 
   const accounts = loadAccounts();
   if (accounts[cleanKey]) {
-    return { ok: false, error: 'اسم المستخدم مسجل مسبقاً. جرّب تسجيل الدخول.' };
+    return { ok: false, error: t.errUsernameTaken };
   }
 
-  const cloudUid = await ensureCloudSession(rawUser, password, 'signup');
-  const resolvedUid = cloudUid || `user_${cleanKey}`;
+  const cloudAuth = await authenticateEmailCloudSession(rawUser, password, 'signup');
+  if (!cloudAuth.ok && cloudAuth.reason === 'email-in-use') {
+    return { ok: false, error: t.errUsernameTaken };
+  }
 
+  const resolvedUid = cloudAuth.ok ? cloudAuth.uid : `user_${cleanKey}`;
   const hash = await hashPassword(password);
-  const newProfile = createDefaultProfile(resolvedUid, rawUser, rawUser);
+  const newProfile = createDefaultProfile(resolvedUid, rawUser, rawUser, {
+    randomizeAvatar: true,
+  });
+  newProfile.uiLanguage = uiLanguage;
 
-  if (cloudUid) {
+  if (cloudAuth.ok) {
     try {
       await ensureCloudProfileDoc(newProfile);
     } catch {

@@ -1,13 +1,16 @@
 import { useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Check, Image as ImageIcon, Link2, Upload, X } from 'lucide-react';
-import { AVATAR_OPTIONS } from './avatarOptions';
+import { UiLanguage } from '../types/learning';
+import { getUi } from '../lib/i18n';
 import { soundEngine } from '../lib/sound';
+import { AVATAR_OPTIONS } from './avatarOptions';
 
 interface AvatarCustomizerModalProps {
   currentAvatarId: string;
   currentCustomUrl?: string;
   soundEnabled: boolean;
+  uiLanguage: UiLanguage;
   onSelectPreset: (avatarId: string) => void;
   onSelectCustomUrl: (url: string) => void;
   onClose: () => void;
@@ -19,10 +22,15 @@ export function AvatarCustomizerModal({
   currentAvatarId,
   currentCustomUrl,
   soundEnabled,
+  uiLanguage,
   onSelectPreset,
   onSelectCustomUrl,
   onClose,
 }: AvatarCustomizerModalProps) {
+  const t = getUi(uiLanguage);
+  const am = t.avatarModal;
+  const isRtl = uiLanguage === 'ar';
+
   const [tab, setTab] = useState<PickerTab>('menu');
   const [urlInput, setUrlInput] = useState(currentCustomUrl || '');
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -33,7 +41,7 @@ export function AvatarCustomizerModal({
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      setUrlError('يرجى اختيار ملف صورة صالح (PNG أو JPG أو WebP).');
+      setUrlError(am.errInvalidFile);
       return;
     }
 
@@ -67,11 +75,11 @@ export function AvatarCustomizerModal({
     e.preventDefault();
     const trimmed = urlInput.trim();
     if (!trimmed) {
-      setUrlError('يرجى إدخال رابط الصورة.');
+      setUrlError(am.errEmptyUrl);
       return;
     }
     if (!/^https?:\/\/.+/i.test(trimmed) && !trimmed.startsWith('data:image/')) {
-      setUrlError('يجب أن يبدأ الرابط بـ https:// أو http://');
+      setUrlError(am.errInvalidUrl);
       return;
     }
     soundEngine.playCorrect(soundEnabled, 1);
@@ -81,9 +89,10 @@ export function AvatarCustomizerModal({
 
   return (
     <div
+      dir={isRtl ? 'rtl' : 'ltr'}
       role="dialog"
       aria-modal="true"
-      aria-label="تخصيص الصورة الشخصية"
+      aria-label={am.title}
       className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4"
     >
       <motion.div
@@ -99,18 +108,14 @@ export function AvatarCustomizerModal({
           className="hidden"
         />
 
-        {/* الرأس */}
+        {/* Header */}
         <div className="px-6 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
           <div>
             <h2 className="font-display font-black text-lg text-[var(--text-primary)]">
-              تخصيص الصورة الشخصية
+              {am.title}
             </h2>
             <p className="text-xs text-[var(--text-secondary)]">
-              {tab === 'menu'
-                ? 'اختر الطريقة المناسبة لتعيين صورتك'
-                : tab === 'gallery'
-                ? 'اختر من معرض الصور الجاهزة'
-                : 'ألصق رابط صورة مباشرة'}
+              {tab === 'menu' ? am.subMenu : tab === 'gallery' ? am.subGallery : am.subUrl}
             </p>
           </div>
           <button
@@ -119,7 +124,7 @@ export function AvatarCustomizerModal({
               soundEngine.playClick(soundEnabled);
               onClose();
             }}
-            aria-label="إغلاق"
+            aria-label={t.lessonPlayer.exitAria}
             className="w-10 h-10 rounded-2xl bg-[var(--bg-surface-muted)] hover:bg-[var(--border-subtle)] flex items-center justify-center cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -129,51 +134,48 @@ export function AvatarCustomizerModal({
         <div className="p-6">
           {tab === 'menu' && (
             <div className="space-y-3">
-              {/* خيار 1: رفع ملف */}
               <button
                 type="button"
                 onClick={() => {
                   soundEngine.playClick(soundEnabled);
                   fileInputRef.current?.click();
                 }}
-                className="w-full rounded-2xl p-4 bg-[var(--bg-surface-muted)] hover:bg-[#58CC02]/12 border-2 border-transparent hover:border-[#58CC02] flex items-center gap-4 text-right transition-all cursor-pointer"
+                className={`w-full rounded-2xl p-4 bg-[var(--bg-surface-muted)] hover:bg-[#58CC02]/12 border-2 border-transparent hover:border-[#58CC02] flex items-center gap-4 ${
+                  isRtl ? 'text-right' : 'text-left'
+                } transition-all cursor-pointer`}
               >
                 <div className="w-11 h-11 rounded-2xl bg-[#58CC02]/15 text-[#58CC02] flex items-center justify-center shrink-0">
                   <Upload className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="font-display font-extrabold text-sm text-[var(--text-primary)]">
-                    رفع ملف من الجهاز
+                    {am.uploadTitle}
                   </div>
-                  <div className="text-xs text-[var(--text-secondary)]">
-                    اختر صورة مباشرة من جهازك
-                  </div>
+                  <div className="text-xs text-[var(--text-secondary)]">{am.uploadSub}</div>
                 </div>
               </button>
 
-              {/* خيار 2: اختيار من المعرض */}
               <button
                 type="button"
                 onClick={() => {
                   soundEngine.playClick(soundEnabled);
                   setTab('gallery');
                 }}
-                className="w-full rounded-2xl p-4 bg-[var(--bg-surface-muted)] hover:bg-[#1CB0F6]/12 border-2 border-transparent hover:border-[#1CB0F6] flex items-center gap-4 text-right transition-all cursor-pointer"
+                className={`w-full rounded-2xl p-4 bg-[var(--bg-surface-muted)] hover:bg-[#1CB0F6]/12 border-2 border-transparent hover:border-[#1CB0F6] flex items-center gap-4 ${
+                  isRtl ? 'text-right' : 'text-left'
+                } transition-all cursor-pointer`}
               >
                 <div className="w-11 h-11 rounded-2xl bg-[#1CB0F6]/15 text-[#1CB0F6] flex items-center justify-center shrink-0">
                   <ImageIcon className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="font-display font-extrabold text-sm text-[var(--text-primary)]">
-                    الاختيار من المعرض
+                    {am.galleryTitle}
                   </div>
-                  <div className="text-xs text-[var(--text-secondary)]">
-                    تصفح الأيقونات والشخصيات المصممة
-                  </div>
+                  <div className="text-xs text-[var(--text-secondary)]">{am.gallerySub}</div>
                 </div>
               </button>
 
-              {/* خيار 3: رابط صورة */}
               <button
                 type="button"
                 onClick={() => {
@@ -181,18 +183,18 @@ export function AvatarCustomizerModal({
                   setUrlError(null);
                   setTab('url');
                 }}
-                className="w-full rounded-2xl p-4 bg-[var(--bg-surface-muted)] hover:bg-[#FF9600]/12 border-2 border-transparent hover:border-[#FF9600] flex items-center gap-4 text-right transition-all cursor-pointer"
+                className={`w-full rounded-2xl p-4 bg-[var(--bg-surface-muted)] hover:bg-[#FF9600]/12 border-2 border-transparent hover:border-[#FF9600] flex items-center gap-4 ${
+                  isRtl ? 'text-right' : 'text-left'
+                } transition-all cursor-pointer`}
               >
                 <div className="w-11 h-11 rounded-2xl bg-[#FF9600]/15 text-[#FF9600] flex items-center justify-center shrink-0">
                   <Link2 className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="font-display font-extrabold text-sm text-[var(--text-primary)]">
-                    صورة عبر رابط URL
+                    {am.urlTitle}
                   </div>
-                  <div className="text-xs text-[var(--text-secondary)]">
-                    استخدم صورة من رابط إنترنت مباشر
-                  </div>
+                  <div className="text-xs text-[var(--text-secondary)]">{am.urlSub}</div>
                 </div>
               </button>
             </div>
@@ -203,6 +205,7 @@ export function AvatarCustomizerModal({
               <div className="grid grid-cols-3 gap-3">
                 {AVATAR_OPTIONS.map((av) => {
                   const selected = !currentCustomUrl && currentAvatarId === av.id;
+                  const label = am.labels[av.id] || av.label;
                   return (
                     <button
                       key={av.id}
@@ -224,7 +227,7 @@ export function AvatarCustomizerModal({
                         {av.image ? (
                           <img
                             src={av.image}
-                            alt={av.label}
+                            alt={label}
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"
                           />
@@ -233,7 +236,7 @@ export function AvatarCustomizerModal({
                         )}
                       </div>
                       <span className="text-[11px] font-bold text-[var(--text-primary)] truncate w-full text-center">
-                        {av.label}
+                        {label}
                       </span>
                       {selected && (
                         <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-[#58CC02] text-white flex items-center justify-center">
@@ -250,7 +253,7 @@ export function AvatarCustomizerModal({
                 onClick={() => setTab('menu')}
                 className="btn-3d-neutral w-full py-2.5 rounded-2xl text-xs font-extrabold cursor-pointer"
               >
-                العودة للخيارات
+                {am.backToMenu}
               </button>
             </div>
           )}
@@ -262,7 +265,7 @@ export function AvatarCustomizerModal({
                   htmlFor="avatar-url-input"
                   className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5"
                 >
-                  رابط الصورة
+                  {am.urlLabel}
                 </label>
                 <input
                   id="avatar-url-input"
@@ -282,12 +285,12 @@ export function AvatarCustomizerModal({
                 <div className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--bg-surface-muted)]">
                   <img
                     src={urlInput.trim()}
-                    alt="معاينة الرابط"
+                    alt={am.livePreview}
                     referrerPolicy="no-referrer"
-                    onError={() => setUrlError('تعذّر تحميل الصورة من هذا الرابط.')}
+                    onError={() => setUrlError(am.errLoadUrl)}
                     className="w-12 h-12 rounded-xl object-cover bg-slate-200"
                   />
-                  <span className="text-xs text-[var(--text-secondary)]">معاينة مباشرة</span>
+                  <span className="text-xs text-[var(--text-secondary)]">{am.livePreview}</span>
                 </div>
               )}
 
@@ -301,13 +304,13 @@ export function AvatarCustomizerModal({
                   onClick={() => setTab('menu')}
                   className="btn-3d-neutral flex-1 py-2.5 rounded-2xl text-xs font-extrabold cursor-pointer"
                 >
-                  رجوع
+                  {am.backBtn}
                 </button>
                 <button
                   type="submit"
                   className="btn-3d-green flex-1 py-2.5 rounded-2xl text-xs font-extrabold cursor-pointer"
                 >
-                  اعتماد الصورة
+                  {am.applyBtn}
                 </button>
               </div>
             </form>
