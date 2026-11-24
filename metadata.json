@@ -1,0 +1,6 @@
+{
+  "name": "LingoFox — Modern English Learning",
+  "description": "Playful, gamified English learning platform with CEFR levels A1 to C2, rich vocabulary, interactive fox mascot, voice pronunciation, sound effects, and celebratory VFX.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

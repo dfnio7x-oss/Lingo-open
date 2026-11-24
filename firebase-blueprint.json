@@ -1,0 +1,108 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Learner profile, XP, streak, preferences, and progress across CEFR levels A1 to C2.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "minLength": 3, "maxLength": 20 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "avatarId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "customAvatarUrl": { "type": "string", "maxLength": 512 },
+        "xp": { "type": "integer" },
+        "streak": { "type": "integer" },
+        "lessonsCompleted": { "type": "integer" },
+        "correctAnswers": { "type": "integer" },
+        "totalAnswers": { "type": "integer" },
+        "dailyXp": { "type": "integer" },
+        "dailyLessons": { "type": "integer" },
+        "lastActiveDate": { "type": "string", "minLength": 4, "maxLength": 20 },
+        "dailyGoal": { "type": "integer" },
+        "difficulty": { "type": "string", "enum": ["A1", "A2", "B1", "B2", "C1", "C2"] },
+        "soundEnabled": { "type": "boolean" },
+        "voiceEnabled": { "type": "boolean" },
+        "voiceSpeed": { "type": "number" },
+        "notificationsEnabled": { "type": "boolean" },
+        "darkMode": { "type": "boolean" },
+        "uiLanguage": { "type": "string", "enum": ["en", "ar", "es", "fr"] },
+        "unlockedLevels": { "type": "array" },
+        "completedLessons": { "type": "array" },
+        "lessonStars": { "type": "object" },
+        "masteredWords": { "type": "array" },
+        "weeklyXp": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "username",
+        "displayName",
+        "avatarId",
+        "customAvatarUrl",
+        "xp",
+        "streak",
+        "lessonsCompleted",
+        "correctAnswers",
+        "totalAnswers",
+        "dailyXp",
+        "dailyLessons",
+        "lastActiveDate",
+        "dailyGoal",
+        "difficulty",
+        "soundEnabled",
+        "voiceEnabled",
+        "voiceSpeed",
+        "notificationsEnabled",
+        "darkMode",
+        "uiLanguage",
+        "unlockedLevels",
+        "completedLessons",
+        "lessonStars",
+        "masteredWords",
+        "weeklyXp",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Isolated PII storage for learner email.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "updatedAt"]
+    },
+    "LessonAttempt": {
+      "title": "LessonAttempt",
+      "description": "Immutable record of a completed lesson session.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "lessonId": { "type": "string", "maxLength": 64 },
+        "level": { "type": "string", "enum": ["A1", "A2", "B1", "B2", "C1", "C2"] },
+        "xpEarned": { "type": "integer" },
+        "accuracy": { "type": "integer" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "lessonId", "level", "xpEarned", "accuracy", "completedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Owner-scoped learner profile and learning progress."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Private PII document ('info') isolated from profile reads."
+    },
+    "/users/{userId}/attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/LessonAttempt" },
+      "description": "Completed lesson attempts belonging to the learner."
+    }
+  }
+}

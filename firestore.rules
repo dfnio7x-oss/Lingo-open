@@ -1,0 +1,199 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny all reads and writes by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Global Primitives ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidWeeklyXp(weekly) {
+      return weekly is map &&
+        weekly.keys().hasAll(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) &&
+        weekly.keys().hasOnly(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) &&
+        weekly.Mon is int && weekly.Mon >= 0 && weekly.Mon <= 100000 &&
+        weekly.Tue is int && weekly.Tue >= 0 && weekly.Tue <= 100000 &&
+        weekly.Wed is int && weekly.Wed >= 0 && weekly.Wed <= 100000 &&
+        weekly.Thu is int && weekly.Thu >= 0 && weekly.Thu <= 100000 &&
+        weekly.Fri is int && weekly.Fri >= 0 && weekly.Fri <= 100000 &&
+        weekly.Sat is int && weekly.Sat >= 0 && weekly.Sat <= 100000 &&
+        weekly.Sun is int && weekly.Sun >= 0 && weekly.Sun <= 100000;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'username', 'displayName', 'avatarId', 'customAvatarUrl',
+          'xp', 'streak', 'lessonsCompleted', 'correctAnswers', 'totalAnswers',
+          'dailyXp', 'dailyLessons', 'lastActiveDate', 'dailyGoal', 'difficulty',
+          'soundEnabled', 'voiceEnabled', 'voiceSpeed', 'notificationsEnabled',
+          'darkMode', 'uiLanguage', 'unlockedLevels', 'completedLessons',
+          'lessonStars', 'masteredWords', 'weeklyXp', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'username', 'displayName', 'avatarId', 'customAvatarUrl',
+          'xp', 'streak', 'lessonsCompleted', 'correctAnswers', 'totalAnswers',
+          'dailyXp', 'dailyLessons', 'lastActiveDate', 'dailyGoal', 'difficulty',
+          'soundEnabled', 'voiceEnabled', 'voiceSpeed', 'notificationsEnabled',
+          'darkMode', 'uiLanguage', 'unlockedLevels', 'completedLessons',
+          'lessonStars', 'masteredWords', 'weeklyXp', 'createdAt', 'updatedAt'
+        ]) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == request.auth.uid &&
+        data.username is string && data.username.size() >= 3 && data.username.size() <= 20 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+        data.avatarId is string && data.avatarId.size() >= 1 && data.avatarId.size() <= 64 &&
+        data.customAvatarUrl is string && data.customAvatarUrl.size() <= 512 &&
+        data.xp is int && data.xp >= 0 && data.xp <= 10000000 &&
+        data.streak is int && data.streak >= 0 && data.streak <= 10000 &&
+        data.lessonsCompleted is int && data.lessonsCompleted >= 0 && data.lessonsCompleted <= 20000 &&
+        data.correctAnswers is int && data.correctAnswers >= 0 && data.correctAnswers <= 1000000 &&
+        data.totalAnswers is int && data.totalAnswers >= 0 && data.totalAnswers <= 1000000 &&
+        data.dailyXp is int && data.dailyXp >= 0 && data.dailyXp <= 100000 &&
+        data.dailyLessons is int && data.dailyLessons >= 0 && data.dailyLessons <= 1000 &&
+        data.lastActiveDate is string && data.lastActiveDate.size() >= 4 && data.lastActiveDate.size() <= 20 &&
+        data.dailyGoal is int && data.dailyGoal >= 10 && data.dailyGoal <= 500 &&
+        data.difficulty in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] &&
+        data.soundEnabled is bool &&
+        data.voiceEnabled is bool &&
+        data.voiceSpeed is number && data.voiceSpeed >= 0.5 && data.voiceSpeed <= 1.5 &&
+        data.notificationsEnabled is bool &&
+        data.darkMode is bool &&
+        data.uiLanguage in ['en', 'ar', 'es', 'fr'] &&
+        data.unlockedLevels is list && data.unlockedLevels.size() >= 1 && data.unlockedLevels.size() <= 6 && data.unlockedLevels[0] is string &&
+        data.completedLessons is list && data.completedLessons.size() <= 2000 && (data.completedLessons.size() == 0 || data.completedLessons[0] is string) &&
+        data.lessonStars is map && data.lessonStars.size() <= 2000 &&
+        data.masteredWords is list && data.masteredWords.size() <= 15000 && (data.masteredWords.size() == 0 || data.masteredWords[0] is string) &&
+        isValidWeeklyXp(data.weeklyXp) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivate(data) {
+      return data.keys().hasAll(['uid', 'email', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'updatedAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == request.auth.uid &&
+        data.email is string && data.email.size() <= 256 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidLessonAttempt(data) {
+      return data.keys().hasAll(['uid', 'lessonId', 'level', 'xpEarned', 'accuracy', 'completedAt']) &&
+        data.keys().hasOnly(['uid', 'lessonId', 'level', 'xpEarned', 'accuracy', 'completedAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == request.auth.uid &&
+        data.lessonId is string && data.lessonId.size() >= 1 && data.lessonId.size() <= 64 &&
+        data.level in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] &&
+        data.xpEarned is int && data.xpEarned >= 0 && data.xpEarned <= 1000 &&
+        data.accuracy is int && data.accuracy >= 0 && data.accuracy <= 100 &&
+        data.completedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if isSignedIn() && resource.data.uid == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isSignedIn() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().username == existing().username &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Action: Update Account Profile & Avatar (You view)
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'avatarId', 'customAvatarUrl', 'updatedAt'
+          ]) ||
+          // Action: Update Preferences & Audio/Theme Settings
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'dailyGoal', 'difficulty', 'soundEnabled', 'voiceEnabled',
+            'voiceSpeed', 'notificationsEnabled', 'darkMode', 'uiLanguage',
+            'updatedAt'
+          ]) ||
+          // Action: Record Learning Progress, Stars & Level Unlocks
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'xp', 'streak', 'lessonsCompleted', 'correctAnswers', 'totalAnswers',
+            'dailyXp', 'dailyLessons', 'lastActiveDate', 'unlockedLevels',
+            'completedLessons', 'lessonStars', 'masteredWords', 'weeklyXp',
+            'difficulty', 'updatedAt'
+          ])
+        );
+
+      allow delete: if isSignedIn() && isValidId(userId) && isOwner(userId);
+
+      // Isolated PII subcollection
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) && docId == 'info' && isOwner(userId);
+        allow list: if false;
+
+        allow create: if isSignedIn() &&
+          isValidId(userId) &&
+          isValidId(docId) &&
+          docId == 'info' &&
+          isOwner(userId) &&
+          isValidUserPrivate(incoming()) &&
+          incoming().updatedAt == request.time &&
+          existsAfter(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isSignedIn() &&
+          isValidId(userId) &&
+          isValidId(docId) &&
+          docId == 'info' &&
+          isOwner(userId) &&
+          isValidUserPrivate(incoming()) &&
+          incoming().uid == existing().uid &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt']) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(docId) && docId == 'info' && isOwner(userId);
+      }
+
+      // Immutable Lesson Attempts subcollection
+      match /attempts/{attemptId} {
+        allow get: if isValidId(userId) && isValidId(attemptId) && isOwner(userId);
+        allow list: if isSignedIn() && resource.data.uid == request.auth.uid;
+
+        allow create: if isSignedIn() &&
+          isValidId(userId) &&
+          isValidId(attemptId) &&
+          isOwner(userId) &&
+          isValidLessonAttempt(incoming()) &&
+          incoming().completedAt == request.time &&
+          exists(/databases/$(database)/documents/users/$(userId)) &&
+          get(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+
+        allow update: if false;
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(attemptId) && isOwner(userId);
+      }
+    }
+  }
+}

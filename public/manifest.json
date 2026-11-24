@@ -1,0 +1,36 @@
+{
+  "id": "/",
+  "name": "LingoLearn — تعلم الإنجليزية",
+  "short_name": "LingoLearn",
+  "description": "تطبيق تفاعلي لتعلم اللغة الإنجليزية من مستوى A1 إلى C2 مع مفردات أكسفورد وألعاب مصغرة.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "theme_color": "#58CC02",
+  "background_color": "#FFFFFF",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": ["education"],
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+@import "tailwindcss";
+@import "@dawod/thmanyah-font-web/index.css";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg-canvas: #f7f9fc;
+  --bg-surface: #ffffff;
+  --bg-surface-muted: #f1f5f9;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --border-subtle: #e2e8f0;
+  --brand-green: #58cc02;
+  --brand-green-dark: #46a302;
+  --brand-blue: #1cb0f6;
+  --brand-blue-dark: #1899d6;
+  --accent-warm: #ff9600;
+  --accent-fox: #f97316;
+  --accent-danger: #ff4b4b;
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(226, 232, 240, 0.85);
+}
+
+.dark {
+  --bg-canvas: #0f172a;
+  --bg-surface: #1e293b;
+  --bg-surface-muted: #263348;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --border-subtle: #334155;
+  --brand-green: #58cc02;
+  --brand-green-dark: #3e9100;
+  --brand-blue: #1cb0f6;
+  --brand-blue-dark: #0f82ba;
+  --accent-warm: #ffa928;
+  --accent-fox: #fb923c;
+  --accent-danger: #ff5c5c;
+  --glass-bg: rgba(30, 41, 59, 0.84);
+  --glass-border: rgba(51, 65, 85, 0.85);
+}
+
+@layer base {
+  body {
+    font-family: 'Thmanyah Sans', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 700;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: 'Thmanyah Sans', 'Thmanyah Serif Display', 'Nunito', 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700;
+  }
+
+  .font-latin {
+    font-family: 'Plus Jakarta Sans', 'Nunito', 'Thmanyah Sans', sans-serif;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  .font-mono-num {
+    font-family: 'JetBrains Mono', 'Thmanyah Sans', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Tactile Duolingo-style 3D Buttons */
+.btn-3d-green {
+  background-color: var(--brand-green);
+  color: #ffffff;
+  box-shadow: 0 5px 0 var(--brand-green-dark);
+  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 120ms cubic-bezier(0.16, 1, 0.3, 1), filter 120ms ease;
+}
+.btn-3d-green:hover:not(:disabled) {
+  filter: brightness(1.04);
+}
+.btn-3d-green:active:not(:disabled) {
+  transform: translateY(4px) scale(0.985);
+  box-shadow: 0 1px 0 var(--brand-green-dark);
+}
+
+.btn-3d-blue {
+  background-color: var(--brand-blue);
+  color: #ffffff;
+  box-shadow: 0 5px 0 var(--brand-blue-dark);
+  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 120ms cubic-bezier(0.16, 1, 0.3, 1), filter 120ms ease;
+}
+.btn-3d-blue:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.btn-3d-blue:active:not(:disabled) {
+  transform: translateY(4px) scale(0.985);
+  box-shadow: 0 1px 0 var(--brand-blue-dark);
+}
+
+.btn-3d-neutral {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  border: 2px solid var(--border-subtle);
+  box-shadow: 0 4px 0 var(--border-subtle);
+  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 120ms cubic-bezier(0.16, 1, 0.3, 1), background-color 120ms ease;
+}
+.btn-3d-neutral:hover:not(:disabled) {
+  background-color: var(--bg-surface-muted);
+}
+.btn-3d-neutral:active:not(:disabled) {
+  transform: translateY(3px) scale(0.99);
+  box-shadow: 0 1px 0 var(--border-subtle);
+}
+
+/* Fox mascot gentle breathing & floating */
+@keyframes foxFloat {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(0.8deg);
+  }
+}
+
+.animate-fox-idle {
+  animation: foxFloat 3.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fox-idle {
+    animation: none;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
