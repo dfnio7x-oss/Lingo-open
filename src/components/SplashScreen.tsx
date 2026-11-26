@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { UiLanguage } from '../types/learning';
 import { getUi } from '../lib/i18n';
 
@@ -9,12 +9,11 @@ interface SplashScreenProps {
   onFinish: () => void;
 }
 
-const SPLASH_DURATION_MS = 5000;
+const SPLASH_AUTO_DISMISS_MS = 1600;
 
 export function SplashScreen({ uiLanguage, onFinish }: SplashScreenProps) {
   const t = getUi(uiLanguage);
   const isRtl = uiLanguage === 'ar';
-  const [elapsedMs, setElapsedMs] = useState(0);
   const finishedRef = useRef(false);
 
   const handleComplete = () => {
@@ -24,24 +23,13 @@ export function SplashScreen({ uiLanguage, onFinish }: SplashScreenProps) {
   };
 
   useEffect(() => {
-    const start = performance.now();
-    const interval = window.setInterval(() => {
-      const diff = performance.now() - start;
-      if (diff >= SPLASH_DURATION_MS) {
-        setElapsedMs(SPLASH_DURATION_MS);
-        window.clearInterval(interval);
-        handleComplete();
-      } else {
-        setElapsedMs(diff);
-      }
-    }, 60);
+    const timer = window.setTimeout(() => {
+      handleComplete();
+    }, SPLASH_AUTO_DISMISS_MS);
 
-    return () => window.clearInterval(interval);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const progressPct = Math.min(100, (elapsedMs / SPLASH_DURATION_MS) * 100);
-  const secondsLeft = Math.max(1, Math.ceil((SPLASH_DURATION_MS - elapsedMs) / 1000));
 
   return (
     <div
@@ -49,9 +37,10 @@ export function SplashScreen({ uiLanguage, onFinish }: SplashScreenProps) {
       role="dialog"
       aria-modal="true"
       aria-label={t.appName}
-      className="fixed inset-0 z-[100] bg-[var(--bg-canvas)] flex flex-col items-center justify-center p-6 overflow-hidden"
+      onClick={handleComplete}
+      className="fixed inset-0 z-[100] bg-[var(--bg-canvas)] flex flex-col items-center justify-center p-6 overflow-hidden cursor-pointer"
     >
-      {/* Subtle animated ambient background */}
+      {/* Subtle ambient background */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-45 dark:opacity-20"
@@ -60,29 +49,6 @@ export function SplashScreen({ uiLanguage, onFinish }: SplashScreenProps) {
             'radial-gradient(circle at 25% 20%, rgba(88,204,2,0.18), transparent 45%), radial-gradient(circle at 75% 80%, rgba(28,176,246,0.18), transparent 45%)',
         }}
       />
-
-      {/* Skip button at top */}
-      <div className="relative z-10 w-full max-w-md flex items-center justify-between mb-auto pt-2">
-        <span
-          dir="ltr"
-          className="font-mono-num text-xs font-extrabold text-[var(--text-secondary)] px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
-        >
-          {secondsLeft}s
-        </span>
-
-        <button
-          type="button"
-          onClick={handleComplete}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-xs font-display font-extrabold text-[var(--text-primary)] shadow-xs cursor-pointer transition-colors"
-        >
-          <span>{t.splashSkip}</span>
-          {isRtl ? (
-            <ArrowLeft className="w-3.5 h-3.5" />
-          ) : (
-            <ArrowRight className="w-3.5 h-3.5" />
-          )}
-        </button>
-      </div>
 
       {/* Center Brand Emblem */}
       <motion.div
@@ -113,22 +79,7 @@ export function SplashScreen({ uiLanguage, onFinish }: SplashScreenProps) {
         <p className="mt-2 text-sm sm:text-base font-bold text-[var(--text-secondary)] leading-relaxed">
           {t.splashTagline}
         </p>
-
-        {/* Progress Bar */}
-        <div className="mt-8 w-full max-w-xs space-y-2.5">
-          <div className="h-2.5 w-full rounded-full bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-[#58CC02] to-[#1CB0F6] transition-[width] duration-75"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-          <div className="text-[11px] font-bold text-[var(--text-secondary)]">
-            {t.splashStarting}
-          </div>
-        </div>
       </motion.div>
-
-      <div className="mb-auto" />
     </div>
   );
 }

@@ -3,7 +3,6 @@ import { motion } from 'motion/react';
 import { Eye, EyeOff, LogIn, UserPlus } from 'lucide-react';
 import { UiLanguage, UserProfileData } from '../types/learning';
 import {
-  loginWithGoogle,
   loginWithUsernamePassword,
   MAX_USERNAME_LENGTH,
   MIN_USERNAME_LENGTH,
@@ -34,7 +33,6 @@ export function AuthScreen({
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
 
   const trimmedLen = username.trim().length;
   const formatWarning = trimmedLen > 0 ? validateUsernameFormat(username, uiLanguage) : null;
@@ -44,30 +42,9 @@ export function AuthScreen({
       : formatWarning || t.usernameCharsCount(trimmedLen, MAX_USERNAME_LENGTH);
   const isUsernameLengthOk = trimmedLen === 0 || !formatWarning;
 
-  const handleGoogleLogin = async () => {
-    if (submitting || googleLoading) return;
-    soundEngine.playClick(soundEnabled);
-    setGoogleLoading(true);
-    setErrorMsg(null);
-
-    const res = await loginWithGoogle(uiLanguage);
-    if (!res.ok) {
-      setErrorMsg(res.error);
-      soundEngine.playWrong(soundEnabled);
-      setGoogleLoading(false);
-      return;
-    }
-
-    soundEngine.playLessonComplete(soundEnabled);
-    triggerConfettiBurst('stars');
-    setTimeout(() => {
-      onSuccess(res.profile);
-    }, 380);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitting || googleLoading) return;
+    if (submitting) return;
 
     const formatErr = validateUsernameFormat(username, uiLanguage);
     if (formatErr) {
@@ -131,42 +108,6 @@ export function AuthScreen({
 
         <div className="w-full rounded-[28px] bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-[0_20px_50px_rgba(15,23,42,0.08)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.45)] overflow-hidden pt-6">
           <div className="px-7 sm:px-8 pb-7 space-y-5">
-            {/* Google Sign-In for instant reliable Cloud Sync across devices */}
-            <button
-              type="button"
-              disabled={googleLoading || submitting}
-              onClick={handleGoogleLogin}
-              className="w-full py-3 px-4 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-2 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white font-display font-extrabold text-sm flex items-center justify-center gap-3 shadow-xs transition-all cursor-pointer disabled:opacity-60"
-            >
-              <svg viewBox="0 0 24 24" className="w-5 h-5 shrink-0" aria-hidden="true">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"
-                />
-              </svg>
-              <span>{googleLoading ? t.googleSigningIn : t.googleContinue}</span>
-            </button>
-
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">
-                {t.orDivider}
-              </span>
-              <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-            </div>
-
             <div className="flex justify-center">
               <div
                 role="tablist"
@@ -314,7 +255,7 @@ export function AuthScreen({
 
               <motion.button
                 type="submit"
-                disabled={submitting || googleLoading}
+                disabled={submitting}
                 whileTap={{ scale: 0.985 }}
                 className="w-full py-3 rounded-xl bg-[#18181B] dark:bg-[#58CC02] hover:bg-[#27272A] dark:hover:bg-[#4eb802] text-white font-display font-extrabold text-sm shadow-sm transition-colors cursor-pointer disabled:opacity-60"
               >

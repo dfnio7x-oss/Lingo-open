@@ -29,7 +29,6 @@ interface YouViewProps {
   syncStatus: 'synced' | 'syncing' | 'localOnly' | 'error';
   isCloudSignedIn: boolean;
   onSyncNow: () => void;
-  onLinkGoogle: () => void;
   onOpenVault: (level?: CefrLevel | 'ALL') => void;
   onOpenAvatarModal: () => void;
   onUpdateAccount: (patch: Partial<UserProfileData>) => void;
@@ -53,7 +52,6 @@ export function YouView({
   syncStatus,
   isCloudSignedIn,
   onSyncNow,
-  onLinkGoogle,
   onOpenVault,
   onOpenAvatarModal,
   onUpdateAccount,
@@ -284,7 +282,7 @@ export function YouView({
               </span>
             )}
 
-            {isCloudSignedIn ? (
+            {isCloudSignedIn && (
               <button
                 type="button"
                 onClick={onSyncNow}
@@ -292,15 +290,6 @@ export function YouView({
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>{y.syncNowBtn}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onLinkGoogle}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1CB0F6]/12 hover:bg-[#1CB0F6]/20 text-xs font-extrabold text-[#1CB0F6] cursor-pointer transition-colors"
-              >
-                <CloudCheck className="w-3.5 h-3.5" />
-                <span>{y.linkGoogleBtn}</span>
               </button>
             )}
           </div>

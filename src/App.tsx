@@ -19,7 +19,6 @@ import {
   deleteAccountByUsername,
   getAccountProfile,
   getActiveSessionUsername,
-  loginWithGoogle,
   normalizeProfile,
   saveAccountProfile,
   setActiveSessionUsername,
@@ -201,22 +200,6 @@ export default function App() {
       triggerBurst(t.toast.syncSuccess, '#58CC02');
     } else {
       setSyncStatus(auth.currentUser && !auth.currentUser.isAnonymous ? 'error' : 'localOnly');
-    }
-  };
-
-  const handleLinkGoogle = async () => {
-    soundEngine.playClick(profile.soundEnabled);
-    setSyncStatus('syncing');
-    const res = await loginWithGoogle(profile.uiLanguage, profile);
-    if (res.ok) {
-      setProfile(res.profile);
-      setIsCloudSignedIn(true);
-      setSyncStatus('synced');
-      soundEngine.playLessonComplete(profile.soundEnabled);
-      triggerBurst(t.toast.cloudLinked, '#1CB0F6');
-    } else {
-      setSyncStatus('localOnly');
-      triggerBurst(res.error, '#FF4B4B');
     }
   };
 
@@ -472,7 +455,6 @@ export default function App() {
                 syncStatus={syncStatus}
                 isCloudSignedIn={isCloudSignedIn}
                 onSyncNow={handleSyncNow}
-                onLinkGoogle={handleLinkGoogle}
                 onOpenVault={(lvl) => setVaultLevel(lvl || 'ALL')}
                 onOpenAvatarModal={() => setShowAvatarModal(true)}
                 onUpdateAccount={handleUpdateAccount}
