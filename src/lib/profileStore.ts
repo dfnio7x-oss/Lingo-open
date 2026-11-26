@@ -23,7 +23,7 @@ export function createDefaultProfile(
     username: username.slice(0, 20) || 'learner',
     displayName: displayName.slice(0, 80) || 'Learner',
     email: '',
-    avatarId: options?.randomizeAvatar ? getRandomAvatarId() : 'app-crest',
+    avatarId: options?.randomizeAvatar === false ? 'scholar-owl' : getRandomAvatarId(),
     customAvatarUrl: undefined,
     xp: 0,
     streak: 1,

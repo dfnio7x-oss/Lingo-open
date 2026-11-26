@@ -180,6 +180,8 @@ export async function signInWithGooglePopup(
         fbUser.uid
       );
       await ensureCloudProfileDoc(hydrated);
+      await syncCloudProfileMeta(hydrated);
+      await syncCloudPreferences(hydrated);
       await syncCloudProgress(hydrated);
       if (hydrated.email) {
         await syncCloudPrivateEmail(hydrated.email, hydrated);
@@ -226,6 +228,7 @@ export async function signInWithGooglePopup(
     ) {
       return { ok: false, code: 'popup-closed' };
     }
+    console.error('Google Sign-In / Cloud Sync failed:', err);
     return { ok: false, code: 'failed' };
   }
 }
@@ -308,7 +311,7 @@ export async function syncCloudProfileMeta(
       displayName: (profile.displayName || profile.username).trim().slice(0, 80) || profile.username,
       avatarId: (
         profile.avatarId === 'pip-fox' || !profile.avatarId
-          ? 'app-crest'
+          ? getRandomAvatarId()
           : profile.avatarId
       ).slice(0, 64),
       customAvatarUrl: sanitizeCloudAvatarUrl(profile.customAvatarUrl),

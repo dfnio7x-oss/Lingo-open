@@ -85,7 +85,7 @@ export function YouView({
   const levelPct = Math.round((xpIntoLevel / 120) * 100);
 
   const selectedAvatar =
-    AVATAR_OPTIONS.find((a) => a.id === profile.avatarId) || AVATAR_OPTIONS[0];
+    AVATAR_OPTIONS.find((a) => a.id === profile.avatarId) || AVATAR_OPTIONS[1];
   const avatarImageSrc = profile.customAvatarUrl || selectedAvatar.image;
   const totalCatalogWords = ALL_WORDS.length + OXFORD_ALL_WORDS.length;
 

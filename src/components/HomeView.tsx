@@ -87,7 +87,7 @@ export function HomeView({
   const isLevelUnlocked = profile.unlockedLevels.includes(selectedLevel);
 
   const selectedAvatar =
-    AVATAR_OPTIONS.find((a) => a.id === profile.avatarId) || AVATAR_OPTIONS[0];
+    AVATAR_OPTIONS.find((a) => a.id === profile.avatarId) || AVATAR_OPTIONS[1];
   const avatarImageSrc = profile.customAvatarUrl || selectedAvatar.image;
 
   const levelWordsSet = useMemo(() => {
