@@ -9,21 +9,26 @@ import {
   Globe,
   GraduationCap,
   Moon,
+  ShieldCheck,
+  Snowflake,
   Sparkles,
   Sun,
   Target,
   Volume2,
   Waves,
+  Zap,
 } from 'lucide-react';
 import { CefrLevel, UserProfileData } from '../types/learning';
 import { CEFR_ORDER } from '../data/curriculum';
 import { getUi, LANGUAGE_OPTIONS } from '../lib/i18n';
+import { STREAK_FREEZE_COST } from '../lib/profileStore';
 import { soundEngine, VOICE_SPEED_OPTIONS } from '../lib/sound';
 import { LevelBadgeArt } from './LevelBadgeArt';
 
 interface SettingsViewProps {
   profile: UserProfileData;
   onUpdatePreferences: (patch: Partial<UserProfileData>) => void;
+  onPurchaseStreakFreeze: () => void;
 }
 
 type ExpandableSection =
@@ -32,7 +37,6 @@ type ExpandableSection =
   | 'dailyGoal'
   | 'difficulty'
   | 'appearance'
-  | 'language'
   | null;
 
 const DAILY_GOALS = [20, 50, 100, 150];
@@ -40,6 +44,7 @@ const DAILY_GOALS = [20, 50, 100, 150];
 export function SettingsView({
   profile,
   onUpdatePreferences,
+  onPurchaseStreakFreeze,
 }: SettingsViewProps) {
   const t = getUi(profile.uiLanguage);
   const s = t.settings;
@@ -60,6 +65,11 @@ export function SettingsView({
 
   const activeLanguageOption =
     LANGUAGE_OPTIONS.find((l) => l.code === profile.uiLanguage) || LANGUAGE_OPTIONS[0];
+
+  const isDailyXpZero = profile.dailyXp === 0;
+  const hasEnoughXpForFreeze = profile.xp >= STREAK_FREEZE_COST;
+  const canBuyFreeze =
+    isDailyXpZero && !profile.streakFreezeActive && hasEnoughXpForFreeze;
 
   const DisclosureChevron = ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? (
@@ -224,13 +234,143 @@ export function SettingsView({
         </div>
       </section>
 
-      {/* Group 2: Study Plan & Level */}
+      {/* Group 2 (Centered Middle Section): App Language */}
+      <section aria-label={s.languageTitle} className="space-y-2.5">
+        <div className="rounded-[24px] bg-[var(--bg-surface)] border border-slate-200/80 dark:border-white/[0.08] p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="text-center space-y-1 max-w-md mx-auto">
+            <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-[#1CB0F6]/12 text-[#1CB0F6] mb-1">
+              <Globe className="w-5 h-5" />
+            </div>
+            <h2 className="font-display font-black text-base sm:text-lg text-[var(--text-primary)]">
+              {s.languageTitle}
+            </h2>
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              {s.languageSub} · <span className="font-bold text-[#1CB0F6]">{activeLanguageOption.label}</span>
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-xl mx-auto">
+            {LANGUAGE_OPTIONS.map((lang) => {
+              const active = profile.uiLanguage === lang.code;
+              return (
+                <button
+                  key={lang.code}
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playClick(profile.soundEnabled);
+                    onUpdatePreferences({ uiLanguage: lang.code });
+                  }}
+                  className={`rounded-2xl p-3.5 ${
+                    isRtl ? 'text-right' : 'text-left'
+                  } border transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                    active
+                      ? 'bg-[#1CB0F6]/12 border-[#1CB0F6] shadow-xs'
+                      : 'bg-[var(--bg-surface-muted)]/55 border-[var(--border-subtle)] hover:border-[#1CB0F6]/60'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="font-display font-extrabold text-sm text-[var(--text-primary)]">
+                      {lang.label}
+                    </div>
+                    <div className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
+                      {lang.subtitle[profile.uiLanguage]}
+                    </div>
+                  </div>
+                  {active && <Check className="w-4 h-4 text-[#1CB0F6] shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Group 3: Study Plan, Streak Freeze & Appearance */}
       <section aria-label={s.studyPlanTitle} className="space-y-2">
         <h2 className="text-xs font-bold text-[var(--text-secondary)] px-3">
           {s.studyPlanTitle}
         </h2>
 
         <div className="rounded-[20px] bg-[var(--bg-surface)] border border-slate-200/80 dark:border-white/[0.06] overflow-hidden divide-y divide-slate-100 dark:divide-white/[0.06] shadow-xs">
+          {/* Row: Streak Freeze (50 XP when daily XP is 0) */}
+          <div className="p-4 sm:p-5 space-y-3 bg-gradient-to-br from-[#38BDF8]/8 via-transparent to-transparent">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                <div
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                    profile.streakFreezeActive
+                      ? 'bg-[#0EA5E9] text-white shadow-sm'
+                      : 'bg-[#38BDF8]/15 text-[#0284C7] dark:text-[#38BDF8]'
+                  }`}
+                >
+                  {profile.streakFreezeActive ? (
+                    <ShieldCheck className="w-5 h-5" />
+                  ) : (
+                    <Snowflake className="w-5 h-5" />
+                  )}
+                </div>
+
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-display font-bold text-sm sm:text-[15px] text-[var(--text-primary)]">
+                      {s.streakFreezeTitle}
+                    </span>
+                    <span
+                      dir="ltr"
+                      className="text-xs font-mono-num font-bold text-[#0284C7] dark:text-[#38BDF8]"
+                    >
+                      · {s.streakFreezeCost(STREAK_FREEZE_COST)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                    {s.streakFreezeDesc}
+                  </p>
+                  {profile.streakFreezeProtectedDate && (
+                    <p className="text-[11px] font-bold text-[#0284C7] dark:text-[#38BDF8] pt-0.5">
+                      {s.streakFreezeProtectedNote(profile.streakFreezeProtectedDate)}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {profile.streakFreezeActive ? (
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0EA5E9]/15 text-[#0284C7] dark:text-[#38BDF8] text-xs font-extrabold shrink-0">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>{s.streakFreezeActiveBadge}</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!canBuyFreeze}
+                  onClick={() => {
+                    if (!canBuyFreeze) return;
+                    onPurchaseStreakFreeze();
+                  }}
+                  className={`px-4 py-2.5 rounded-xl font-display font-extrabold text-xs inline-flex items-center gap-2 transition-all shrink-0 ${
+                    canBuyFreeze
+                      ? 'btn-3d-blue cursor-pointer'
+                      : 'bg-[var(--bg-surface-muted)] text-[var(--text-secondary)] border border-[var(--border-subtle)] opacity-75 cursor-not-allowed'
+                  }`}
+                >
+                  <Snowflake className="w-4 h-4" />
+                  <span>
+                    {!isDailyXpZero
+                      ? s.streakFreezeBuyBtn(STREAK_FREEZE_COST)
+                      : !hasEnoughXpForFreeze
+                      ? s.streakFreezeNeedXp(STREAK_FREEZE_COST - profile.xp)
+                      : s.streakFreezeBuyBtn(STREAK_FREEZE_COST)}
+                  </span>
+                </button>
+              )}
+            </div>
+
+            {!profile.streakFreezeActive && !isDailyXpZero && (
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--text-secondary)]">
+                <Zap className="w-3.5 h-3.5 text-[#FF9600] shrink-0" />
+                <span>{s.streakFreezeOnlyZeroXp}</span>
+              </div>
+            )}
+          </div>
+
           {/* Row: Daily Goal XP */}
           <div>
             <button
@@ -353,16 +493,7 @@ export function SettingsView({
               onUpdatePreferences({ notificationsEnabled: next });
             }}
           />
-        </div>
-      </section>
 
-      {/* Group 3: Display & Language */}
-      <section aria-label={s.appearanceTitle} className="space-y-2">
-        <h2 className="text-xs font-bold text-[var(--text-secondary)] px-3">
-          {s.appearanceTitle}
-        </h2>
-
-        <div className="rounded-[20px] bg-[var(--bg-surface)] border border-slate-200/80 dark:border-white/[0.06] overflow-hidden divide-y divide-slate-100 dark:divide-white/[0.06] shadow-xs">
           {/* Row: Theme Mode */}
           <div>
             <button
@@ -437,66 +568,6 @@ export function SettingsView({
                       {profile.darkMode && <Check className="w-4 h-4 text-[#1CB0F6]" />}
                     </div>
                   </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Row: App Language */}
-          <div>
-            <button
-              type="button"
-              onClick={() => toggleExpand('language')}
-              aria-expanded={expanded === 'language'}
-              className="w-full min-h-[56px] px-4 sm:px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-[var(--bg-surface-muted)]/60 transition-colors cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <Globe className="w-5 h-5 text-[var(--text-secondary)] shrink-0" />
-                <span className="font-display font-bold text-sm sm:text-[15px] text-[var(--text-primary)] truncate">
-                  {s.languageTitle}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs font-bold text-[var(--text-secondary)]">
-                  {activeLanguageOption.label}
-                </span>
-                <DisclosureChevron isOpen={expanded === 'language'} />
-              </div>
-            </button>
-
-            {expanded === 'language' && (
-              <div className="px-4 sm:px-5 pb-4 pt-1 bg-[var(--bg-surface-muted)]/40">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {LANGUAGE_OPTIONS.map((lang) => {
-                    const active = profile.uiLanguage === lang.code;
-                    return (
-                      <button
-                        key={lang.code}
-                        type="button"
-                        onClick={() => {
-                          soundEngine.playClick(profile.soundEnabled);
-                          onUpdatePreferences({ uiLanguage: lang.code });
-                        }}
-                        className={`rounded-xl p-3 ${
-                          isRtl ? 'text-right' : 'text-left'
-                        } border transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                          active
-                            ? 'bg-[#1CB0F6]/10 border-[#1CB0F6]'
-                            : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] hover:border-slate-400'
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <div className="font-display font-extrabold text-sm text-[var(--text-primary)]">
-                            {lang.label}
-                          </div>
-                          <div className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
-                            {lang.subtitle[profile.uiLanguage]}
-                          </div>
-                        </div>
-                        {active && <Check className="w-4 h-4 text-[#1CB0F6] shrink-0" />}
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
             )}

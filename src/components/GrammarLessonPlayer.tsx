@@ -443,13 +443,16 @@ export function GrammarLessonPlayer({
                         </p>
                         <button
                           type="button"
-                          onClick={() =>
-                            soundEngine.speakWord(
-                              currentQuestion.sentence.replace('___', currentQuestion.correctAnswer),
-                              true,
-                              voiceSpeed
-                            )
-                          }
+                          onClick={() => {
+                            const textToSpeak =
+                              checkedState === 'idle'
+                                ? currentQuestion.sentence
+                                : currentQuestion.sentence.replace(
+                                    /_{2,}/g,
+                                    currentQuestion.correctAnswer
+                                  );
+                            soundEngine.speakWord(textToSpeak, true, voiceSpeed);
+                          }}
                           aria-label={t.grammar.listenExample}
                           className="w-10 h-10 rounded-xl bg-[var(--bg-surface)] text-[#1CB0F6] flex items-center justify-center shrink-0 cursor-pointer"
                         >

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CefrLevel,
@@ -10,10 +10,12 @@ import {
 import { ALL_LESSONS, CEFR_ORDER } from './data/curriculum';
 import {
   createDefaultProfile,
+  evaluateDailyStreakTransition,
   getTodayIso,
   getTodayWeekdayKey,
   loadLocalProfile,
   saveLocalProfile,
+  STREAK_FREEZE_COST,
 } from './lib/profileStore';
 import {
   deleteAccountByUsername,
@@ -34,6 +36,7 @@ import {
   syncCloudPrivateEmail,
   syncCloudProfileMeta,
   syncCloudProgress,
+  syncCloudStreakFreeze,
   syncFullProfileToCloud,
 } from './lib/cloudSync';
 import { auth } from './lib/firebase';
@@ -49,6 +52,7 @@ import { YouView } from './components/YouView';
 import { SettingsView } from './components/SettingsView';
 import { LessonPlayer } from './components/LessonPlayer';
 import { SplashScreen } from './components/SplashScreen';
+import { StreakCelebrationModal } from './components/StreakCelebrationModal';
 import { VocabVaultModal } from './components/VocabVaultModal';
 import { OfflineIndicator } from './components/PwaControls';
 import {
@@ -84,9 +88,26 @@ export default function App() {
   const [activeGrammarUnit, setActiveGrammarUnit] = useState<GrammarUnit | null>(null);
   const [vaultLevel, setVaultLevel] = useState<CefrLevel | 'ALL' | null>(null);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [pendingStreakCelebration, setPendingStreakCelebration] = useState<number | null>(null);
+  const [activeStreakCelebration, setActiveStreakCelebration] = useState<number | null>(null);
   const [bursts, setBursts] = useState<FloatingBurst[]>([]);
 
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const prevStreakRef = useRef(profile.streak);
+  const justCompletedLessonRef = useRef(false);
+
   const t = getUi(profile.uiLanguage);
+
+  const triggerBurst = useCallback(
+    (text: string, color: string, subtext?: string) => {
+      setBursts((prev) => [
+        ...prev,
+        { id: Date.now() + Math.random(), text, color, subtext },
+      ]);
+    },
+    []
+  );
 
   // Hydrate Firebase / Google sessions on boot even if localStorage was cleared
   useEffect(() => {
@@ -105,25 +126,31 @@ export default function App() {
           cloudData?.username || deriveUsernameFromFirebaseUser(fbUser);
 
         if (cloudData) {
-          setProfile((prev) => {
-            const base =
-              prev.uid === fbUser.uid || prev.username.toLowerCase() === derivedUser.toLowerCase()
-                ? prev
-                : createDefaultProfile(
-                    fbUser.uid,
-                    derivedUser,
-                    fbUser.displayName || derivedUser,
-                    { randomizeAvatar: true }
-                  );
-            const merged = normalizeProfile(
-              mergeLocalAndCloudProfiles(base, cloudData, fbUser.uid),
-              derivedUser
-            );
-            saveAccountProfile(merged.username, merged);
-            return merged;
-          });
+          const current = profileRef.current;
+          const base =
+            current.uid === fbUser.uid || current.username.toLowerCase() === derivedUser.toLowerCase()
+              ? current
+              : createDefaultProfile(
+                  fbUser.uid,
+                  derivedUser,
+                  fbUser.displayName || derivedUser,
+                  { randomizeAvatar: true }
+                );
+          const merged = normalizeProfile(
+            mergeLocalAndCloudProfiles(base, cloudData, fbUser.uid),
+            derivedUser
+          );
+          const transitioned = evaluateDailyStreakTransition(merged);
+          saveAccountProfile(transitioned.profile.username, transitioned.profile);
+          setProfile(transitioned.profile);
+          if (transitioned.status !== 'unchanged') {
+            void syncCloudStreakFreeze(transitioned.profile);
+          }
           setActiveSessionUsername(derivedUser);
           setIsAuthenticated(true);
+          if (transitioned.status === 'freeze-used') {
+            triggerBurst(getUi(transitioned.profile.uiLanguage).toast.streakFreezeUsed, '#0EA5E9');
+          }
         }
         setSyncStatus('synced');
       } catch {
@@ -131,7 +158,7 @@ export default function App() {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [triggerBurst]);
 
   // Apply Dark Mode & Document Direction/Language cleanly to <html>
   useEffect(() => {
@@ -154,28 +181,55 @@ export default function App() {
     }
   }, [profile, isAuthenticated]);
 
-  const triggerBurst = useCallback(
-    (text: string, color: string, subtext?: string) => {
-      setBursts((prev) => [
-        ...prev,
-        { id: Date.now() + Math.random(), text, color, subtext },
-      ]);
-    },
-    []
-  );
-
   const expireBurst = useCallback((id: number) => {
     setBursts((prev) => prev.filter((b) => b.id !== id));
   }, []);
 
+  // Queue streak celebration cleanly outside setProfile updaters after a lesson finishes
+  useEffect(() => {
+    if (justCompletedLessonRef.current && profile.streak > prevStreakRef.current) {
+      setPendingStreakCelebration(profile.streak);
+    }
+    justCompletedLessonRef.current = false;
+    prevStreakRef.current = profile.streak;
+  }, [profile.lessonsCompleted, profile.streak]);
+
+  // Evaluate daily streak rollovers / auto-freeze on boot & when tab becomes visible
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const applyTransition = () => {
+      const { profile: next, status } = evaluateDailyStreakTransition(profileRef.current);
+      if (status === 'unchanged') return;
+      setProfile(next);
+      if (status === 'freeze-used') {
+        triggerBurst(getUi(next.uiLanguage).toast.streakFreezeUsed, '#0EA5E9');
+      }
+      if (auth.currentUser && !auth.currentUser.isAnonymous) {
+        void syncCloudStreakFreeze(next);
+      }
+    };
+    applyTransition();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') applyTransition();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [isAuthenticated, triggerBurst]);
+
   const handleAuthSuccess = (loadedProfile: UserProfileData) => {
-    setProfile(loadedProfile);
+    const { profile: transitioned, status } = evaluateDailyStreakTransition(loadedProfile);
+    setProfile(transitioned);
     setIsAuthenticated(true);
     setActiveTab('home');
     const signedInCloud = Boolean(auth.currentUser && !auth.currentUser.isAnonymous);
     setIsCloudSignedIn(signedInCloud);
     setSyncStatus(signedInCloud ? 'synced' : 'localOnly');
-    triggerBurst(getUi(loadedProfile.uiLanguage).toast.welcome(loadedProfile.displayName), '#58CC02');
+    if (status === 'freeze-used') {
+      triggerBurst(getUi(transitioned.uiLanguage).toast.streakFreezeUsed, '#0EA5E9');
+      if (signedInCloud) void syncCloudStreakFreeze(transitioned);
+    } else {
+      triggerBurst(getUi(transitioned.uiLanguage).toast.welcome(transitioned.displayName), '#58CC02');
+    }
   };
 
   const handleSignOut = () => {
@@ -237,6 +291,33 @@ export default function App() {
     });
   };
 
+  const handlePurchaseStreakFreeze = () => {
+    if (profile.dailyXp !== 0 || profile.streakFreezeActive || profile.xp < STREAK_FREEZE_COST) {
+      return;
+    }
+    soundEngine.playUnlock(profile.soundEnabled);
+    triggerConfettiBurst('small');
+    triggerBurst(t.toast.streakFreezeBought, '#0EA5E9');
+
+    setProfile((prev) => {
+      if (prev.dailyXp !== 0 || prev.streakFreezeActive || prev.xp < STREAK_FREEZE_COST) {
+        return prev;
+      }
+      const next: UserProfileData = {
+        ...prev,
+        xp: prev.xp - STREAK_FREEZE_COST,
+        streakFreezeActive: true,
+      };
+      if (isAuthenticated && auth.currentUser && !auth.currentUser.isAnonymous) {
+        setSyncStatus('syncing');
+        void syncCloudStreakFreeze(next).then((ok) =>
+          setSyncStatus(ok ? 'synced' : 'error')
+        );
+      }
+      return next;
+    });
+  };
+
   const handleUnlockLevel = (level: CefrLevel) => {
     if (profile.unlockedLevels.includes(level)) return;
     soundEngine.playLevelUp(profile.soundEnabled);
@@ -271,6 +352,7 @@ export default function App() {
     const today = getTodayIso();
     const weekday = getTodayWeekdayKey();
 
+    justCompletedLessonRef.current = true;
     setProfile((prev) => {
       const isNewDay = prev.lastActiveDate !== today;
       const nextCompleted = Array.from(
@@ -298,10 +380,13 @@ export default function App() {
       const prevStars = prev.lessonStars?.[result.lessonId] || 0;
       const nextStars = Math.max(prevStars, result.stars || 3);
 
+      const nextStreak =
+        prev.streak === 0 ? 1 : isNewDay ? prev.streak + 1 : prev.streak;
+
       const nextProfile: UserProfileData = {
         ...prev,
         xp: prev.xp + result.xpEarned,
-        streak: isNewDay ? prev.streak + 1 : Math.max(prev.streak, 1),
+        streak: nextStreak,
         lessonsCompleted: prev.lessonsCompleted + 1,
         correctAnswers: prev.correctAnswers + result.correctCount,
         totalAnswers: prev.totalAnswers + result.totalCount,
@@ -468,6 +553,7 @@ export default function App() {
               <SettingsView
                 profile={profile}
                 onUpdatePreferences={handleUpdatePreferences}
+                onPurchaseStreakFreeze={handlePurchaseStreakFreeze}
               />
             )}
           </motion.div>
@@ -493,7 +579,14 @@ export default function App() {
           onChangeVoiceSpeed={(speed) => handleUpdatePreferences({ voiceSpeed: speed })}
           onTriggerBurst={triggerBurst}
           onComplete={handleCompleteLesson}
-          onClose={() => setActiveLesson(null)}
+          onClose={() => {
+            soundEngine.stopSpeech();
+            setActiveLesson(null);
+            if (pendingStreakCelebration !== null) {
+              setActiveStreakCelebration(pendingStreakCelebration);
+              setPendingStreakCelebration(null);
+            }
+          }}
         />
       )}
 
@@ -508,7 +601,14 @@ export default function App() {
           onChangeVoiceSpeed={(speed) => handleUpdatePreferences({ voiceSpeed: speed })}
           onTriggerBurst={triggerBurst}
           onComplete={handleCompleteLesson}
-          onClose={() => setActiveGrammarUnit(null)}
+          onClose={() => {
+            soundEngine.stopSpeech();
+            setActiveGrammarUnit(null);
+            if (pendingStreakCelebration !== null) {
+              setActiveStreakCelebration(pendingStreakCelebration);
+              setPendingStreakCelebration(null);
+            }
+          }}
         />
       )}
 
@@ -521,7 +621,10 @@ export default function App() {
           soundEnabled={profile.soundEnabled}
           voiceSpeed={profile.voiceSpeed}
           onChangeVoiceSpeed={(speed) => handleUpdatePreferences({ voiceSpeed: speed })}
-          onClose={() => setVaultLevel(null)}
+          onClose={() => {
+            soundEngine.stopSpeech();
+            setVaultLevel(null);
+          }}
         />
       )}
 
@@ -539,6 +642,16 @@ export default function App() {
             handleUpdateAccount({ customAvatarUrl: url })
           }
           onClose={() => setShowAvatarModal(false)}
+        />
+      )}
+
+      {/* Streak Milestone & Daily Streak Celebration Modal */}
+      {activeStreakCelebration !== null && (
+        <StreakCelebrationModal
+          streak={activeStreakCelebration}
+          soundEnabled={profile.soundEnabled}
+          uiLanguage={profile.uiLanguage}
+          onClose={() => setActiveStreakCelebration(null)}
         />
       )}
 

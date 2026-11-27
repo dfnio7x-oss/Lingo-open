@@ -182,6 +182,24 @@ export interface UiStrings {
     languageTitle: string;
     languageSub: string;
     speedTags: Record<string, string>;
+    streakFreezeTitle: string;
+    streakFreezeDesc: string;
+    streakFreezeCost: (cost: number) => string;
+    streakFreezeActiveBadge: string;
+    streakFreezeBuyBtn: (cost: number) => string;
+    streakFreezeNeedXp: (missing: number) => string;
+    streakFreezeOnlyZeroXp: string;
+    streakFreezeProtectedNote: (date: string) => string;
+  };
+  streakCelebration: {
+    newStreakTitle: (days: number) => string;
+    milestoneTitle: (days: number) => string;
+    newStreakSub: string;
+    milestoneSub: (days: number) => string;
+    nextMilestone: (target: number, remaining: number) => string;
+    maxMilestone: string;
+    continueBtn: string;
+    daysUnit: string;
   };
   lessonPlayer: {
     exitAria: string;
@@ -291,6 +309,8 @@ export interface UiStrings {
     accountDeleted: string;
     cloudLinked: string;
     syncSuccess: string;
+    streakFreezeBought: string;
+    streakFreezeUsed: string;
   };
 }
 
@@ -547,6 +567,24 @@ const AR_STRINGS: UiStrings = {
     languageTitle: 'لغة الواجهة والترجمة',
     languageSub: 'تغيّر لغة الأزرار والقوائم وترجمة معاني الكلمات وشرح القواعد',
     speedTags: { '0.65': 'بطيء', '0.85': 'واضح', '1': 'طبيعي', '1.2': 'سريع' },
+    streakFreezeTitle: 'تجميد الستريك (Streak Freeze)',
+    streakFreezeDesc: 'يحمي سلسلة أيامك ليوم واحد إذا فاتك التمرين عندما تكون نقاط اليوم 0 XP',
+    streakFreezeCost: (cost) => `${cost} XP`,
+    streakFreezeActiveBadge: 'مفعّل · محمي ليوم واحد',
+    streakFreezeBuyBtn: (cost) => `شراء وتفعيل التجميد · ${cost} XP`,
+    streakFreezeNeedXp: (missing) => `تحتاج ${missing} XP إضافية للشراء`,
+    streakFreezeOnlyZeroXp: 'متاح للشراء والتفعيل فقط عندما تكون نقاطك اليوم 0 XP',
+    streakFreezeProtectedNote: (date) => `تمت حماية سلسلتك تلقائياً بتاريخ ${date}`,
+  },
+  streakCelebration: {
+    newStreakTitle: (days) => `سلسلة ${days} أيام متتالية!`,
+    milestoneTitle: (days) => `إنجاز رائع · ${days} أيام متواصلة!`,
+    newStreakSub: 'أضفت يوماً جديداً إلى سلسلتك — استمر على هذا الإيقاع الرائع!',
+    milestoneSub: (days) => `لقد وصلت إلى محطة ${days} أيام من الالتزام المتواصل!`,
+    nextMilestone: (target, remaining) => `المحطة القادمة: ${target} أيام (متبقي ${remaining})`,
+    maxMilestone: 'إنجاز أسطوري في الاستمرارية!',
+    continueBtn: 'متابعة التعلم',
+    daysUnit: 'يوم',
   },
   lessonPlayer: {
     exitAria: 'الخروج من الدرس',
@@ -722,6 +760,8 @@ const AR_STRINGS: UiStrings = {
     accountDeleted: 'تم حذف الحساب',
     cloudLinked: 'تم ربط الحساب بالمزامنة السحابية!',
     syncSuccess: 'تمت مزامنة بياناتك مع السحابة',
+    streakFreezeBought: 'تم تفعيل تجميد الستريك ليوم واحد!',
+    streakFreezeUsed: 'تمت حماية سلسلتك تلقائياً عبر تجميد الستريك!',
   },
 };
 
@@ -923,6 +963,24 @@ const EN_STRINGS: UiStrings = {
     languageTitle: 'Interface & Translation Language',
     languageSub: 'Updates all menus, controls, word meanings, and grammar explanations',
     speedTags: { '0.65': 'Slow', '0.85': 'Clear', '1': 'Normal', '1.2': 'Fast' },
+    streakFreezeTitle: 'Streak Freeze',
+    streakFreezeDesc: 'Protects your streak for one missed day when your daily XP is 0',
+    streakFreezeCost: (cost) => `${cost} XP`,
+    streakFreezeActiveBadge: 'Armed · 1-Day Protection Active',
+    streakFreezeBuyBtn: (cost) => `Buy & Enable Freeze · ${cost} XP`,
+    streakFreezeNeedXp: (missing) => `Need ${missing} more XP`,
+    streakFreezeOnlyZeroXp: 'Available to purchase & enable only when today’s XP is 0',
+    streakFreezeProtectedNote: (date) => `Your streak was auto-protected on ${date}`,
+  },
+  streakCelebration: {
+    newStreakTitle: (days) => `${days}-Day Streak!`,
+    milestoneTitle: (days) => `Milestone Reached · ${days} Days!`,
+    newStreakSub: 'You extended your daily learning streak — keep the momentum going!',
+    milestoneSub: (days) => `Incredible consistency! You hit the ${days}-day streak milestone!`,
+    nextMilestone: (target, remaining) => `Next milestone: ${target} days (${remaining} to go)`,
+    maxMilestone: 'Legendary consistency milestone!',
+    continueBtn: 'Keep Learning',
+    daysUnit: 'days',
   },
   lessonPlayer: {
     exitAria: 'Exit lesson',
@@ -1098,6 +1156,8 @@ const EN_STRINGS: UiStrings = {
     accountDeleted: 'Account deleted',
     cloudLinked: 'Account linked to Google Cloud Sync!',
     syncSuccess: 'Synced with cloud storage',
+    streakFreezeBought: 'Streak Freeze armed for 1 missed day!',
+    streakFreezeUsed: 'Streak Freeze protected your streak!',
   },
 };
 
@@ -1300,6 +1360,24 @@ const ES_STRINGS: UiStrings = {
     languageTitle: 'Idioma de la interfaz y traducción',
     languageSub: 'Cambia el idioma de los menús, traducciones y gramática',
     speedTags: { '0.65': 'Lento', '0.85': 'Claro', '1': 'Normal', '1.2': 'Rápido' },
+    streakFreezeTitle: 'Protector de Racha (Streak Freeze)',
+    streakFreezeDesc: 'Protege tu racha por un día cuando tus XP diarios están en 0',
+    streakFreezeCost: (cost) => `${cost} XP`,
+    streakFreezeActiveBadge: 'Activo · Protección de 1 día',
+    streakFreezeBuyBtn: (cost) => `Comprar y activar · ${cost} XP`,
+    streakFreezeNeedXp: (missing) => `Necesitas ${missing} XP más`,
+    streakFreezeOnlyZeroXp: 'Disponible para activar solo cuando tus XP de hoy son 0',
+    streakFreezeProtectedNote: (date) => `Tu racha fue protegida automáticamente el ${date}`,
+  },
+  streakCelebration: {
+    newStreakTitle: (days) => `¡Racha de ${days} días!`,
+    milestoneTitle: (days) => `¡Hito alcanzado · ${days} días!`,
+    newStreakSub: '¡Sumaste un nuevo día a tu racha de aprendizaje!',
+    milestoneSub: (days) => `¡Constancia increíble! Alcanzaste el hito de ${days} días.`,
+    nextMilestone: (target, remaining) => `Próximo hito: ${target} días (faltan ${remaining})`,
+    maxMilestone: '¡Hito legendario de constancia!',
+    continueBtn: 'Seguir aprendiendo',
+    daysUnit: 'días',
   },
   lessonPlayer: {
     exitAria: 'Salir de la lección',
@@ -1475,6 +1553,8 @@ const ES_STRINGS: UiStrings = {
     accountDeleted: 'Cuenta eliminada',
     cloudLinked: '¡Cuenta vinculada con Google Cloud!',
     syncSuccess: 'Sincronizado con la nube',
+    streakFreezeBought: '¡Protector de racha activado por 1 día!',
+    streakFreezeUsed: '¡Tu racha fue protegida automáticamente!',
   },
 };
 
@@ -1677,6 +1757,24 @@ const FR_STRINGS: UiStrings = {
     languageTitle: "Langue de l'interface et traduction",
     languageSub: "Met à jour tous les menus, traductions et règles de grammaire",
     speedTags: { '0.65': 'Lent', '0.85': 'Clair', '1': 'Normal', '1.2': 'Rapide' },
+    streakFreezeTitle: 'Gel de série (Streak Freeze)',
+    streakFreezeDesc: 'Protège votre série pendant 1 jour lorsque vos XP du jour sont à 0',
+    streakFreezeCost: (cost) => `${cost} XP`,
+    streakFreezeActiveBadge: 'Activé · Protection 1 jour',
+    streakFreezeBuyBtn: (cost) => `Acheter et activer · ${cost} XP`,
+    streakFreezeNeedXp: (missing) => `Il manque ${missing} XP`,
+    streakFreezeOnlyZeroXp: 'Disponible uniquement lorsque vos XP du jour sont à 0',
+    streakFreezeProtectedNote: (date) => `Série protégée automatiquement le ${date}`,
+  },
+  streakCelebration: {
+    newStreakTitle: (days) => `Série de ${days} jours !`,
+    milestoneTitle: (days) => `Palier atteint · ${days} jours !`,
+    newStreakSub: 'Vous avez prolongé votre série quotidienne — continuez ainsi !',
+    milestoneSub: (days) => `Quelle régularité ! Vous avez atteint le palier de ${days} jours.`,
+    nextMilestone: (target, remaining) => `Prochain palier : ${target} jours (encore ${remaining})`,
+    maxMilestone: 'Palier légendaire de régularité !',
+    continueBtn: 'Continuer',
+    daysUnit: 'jours',
   },
   lessonPlayer: {
     exitAria: 'Quitter la leçon',
@@ -1852,6 +1950,8 @@ const FR_STRINGS: UiStrings = {
     accountDeleted: 'Compte supprimé',
     cloudLinked: 'Compte lié à Google Cloud !',
     syncSuccess: 'Synchronisé avec le cloud',
+    streakFreezeBought: 'Gel de série activé pour 1 jour !',
+    streakFreezeUsed: 'Votre série a été protégée automatiquement !',
   },
 };
 

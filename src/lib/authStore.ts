@@ -105,6 +105,11 @@ export function normalizeProfile(
   return {
     ...base,
     ...raw,
+    streakFreezeActive: Boolean(raw.streakFreezeActive),
+    streakFreezeProtectedDate:
+      typeof raw.streakFreezeProtectedDate === 'string'
+        ? raw.streakFreezeProtectedDate.slice(0, 20)
+        : '',
     avatarId:
       raw.avatarId === 'pip-fox' || !raw.avatarId
         ? getRandomAvatarId()

@@ -10,6 +10,7 @@ import {
   Lock,
   Play,
   Settings,
+  Snowflake,
   Star,
   Unlock,
   Zap,
@@ -222,13 +223,19 @@ export function HomeView({
 
   const isLessonUnlocked = (lesson: LessonUnit, globalIndex: number) => {
     if (!isLevelUnlocked) return false;
+    if (profile.completedLessons.includes(lesson.id)) return true;
     if (globalIndex === 0) return true;
-    if (lesson.id.startsWith('ox-deck-')) return true;
     const prevLesson = levelLessons[globalIndex - 1];
-    return (
-      profile.completedLessons.includes(lesson.id) ||
-      profile.completedLessons.includes(prevLesson.id)
-    );
+    return Boolean(prevLesson && profile.completedLessons.includes(prevLesson.id));
+  };
+
+  const isGrammarUnitUnlocked = (unit: GrammarUnit) => {
+    if (!isLevelUnlocked) return false;
+    if (profile.completedLessons.includes(unit.id)) return true;
+    const unitIdx = levelGrammarUnits.findIndex((u) => u.id === unit.id);
+    if (unitIdx <= 0) return unitIdx === 0;
+    const prevUnit = levelGrammarUnits[unitIdx - 1];
+    return Boolean(prevUnit && profile.completedLessons.includes(prevUnit.id));
   };
 
   const jumpSections = useMemo(() => {
@@ -263,13 +270,29 @@ export function HomeView({
           className="inline-flex items-center gap-3 px-4 py-2 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm"
         >
           <div className="flex items-center gap-1.5">
-            <Flame className="w-5 h-5 text-[#FF9600] fill-[#FF9600]" />
+            <motion.div
+              key={profile.streak}
+              initial={{ scale: 0.75 }}
+              animate={{ scale: [0.85, 1.2, 1] }}
+              transition={{ duration: 0.4 }}
+              className="flex items-center"
+            >
+              <Flame className="w-5 h-5 text-[#FF9600] fill-[#FF9600]" />
+            </motion.div>
             <span className="font-mono-num font-black text-base text-[var(--text-primary)]">
               {profile.streak}
             </span>
             <span className="text-xs font-bold text-[var(--text-secondary)]">
               {t.home.dayUnit}
             </span>
+            {profile.streakFreezeActive && (
+              <span
+                title={t.settings.streakFreezeActiveBadge}
+                className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-[#38BDF8]/15 text-[#0284C7] dark:text-[#38BDF8]"
+              >
+                <Snowflake className="w-3.5 h-3.5" />
+              </span>
+            )}
           </div>
           <span className="h-4 w-px bg-[var(--border-subtle)]" aria-hidden="true" />
           <div className="flex items-center gap-1.5">
@@ -881,8 +904,9 @@ export function HomeView({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {filteredGrammarUnits.map((unit) => {
               const completed = profile.completedLessons.includes(unit.id);
+              const unitUnlocked = isGrammarUnitUnlocked(unit);
               const starsEarned = profile.lessonStars?.[unit.id] || (completed ? 3 : 0);
-              const isNext = isLevelUnlocked && !completed && nextGrammarUnit.id === unit.id;
+              const isNext = unitUnlocked && !completed && nextGrammarUnit.id === unit.id;
 
               return (
                 <div
@@ -891,7 +915,7 @@ export function HomeView({
                     grammarCardRefs.current[unit.id] = el;
                   }}
                   className={`rounded-3xl border-2 p-5 flex flex-col justify-between gap-4 transition-all ${
-                    !isLevelUnlocked
+                    !unitUnlocked
                       ? 'bg-[var(--bg-surface-muted)]/60 border-[var(--border-subtle)] opacity-70'
                       : completed
                       ? 'bg-[#ECFDF5]/60 dark:bg-[#123829]/40 border-[#58CC02]/60'
@@ -949,21 +973,21 @@ export function HomeView({
 
                   <button
                     type="button"
-                    disabled={!isLevelUnlocked}
+                    disabled={!unitUnlocked}
                     onClick={() => {
-                      if (!isLevelUnlocked) return;
+                      if (!unitUnlocked) return;
                       soundEngine.playClick(profile.soundEnabled);
                       onStartGrammarUnit(unit);
                     }}
                     className={`w-full py-3 rounded-2xl font-display font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all ${
-                      !isLevelUnlocked
+                      !unitUnlocked
                         ? 'bg-[var(--bg-surface-muted)] text-[var(--text-secondary)] cursor-not-allowed'
                         : completed
                         ? 'btn-3d-neutral cursor-pointer'
                         : 'btn-3d-green cursor-pointer'
                     }`}
                   >
-                    {!isLevelUnlocked ? (
+                    {!unitUnlocked ? (
                       <>
                         <Lock className="w-4 h-4" />
                         <span>{t.home.lockedLabel}</span>

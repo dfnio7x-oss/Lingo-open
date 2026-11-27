@@ -45,7 +45,8 @@ service cloud.firestore {
     function isValidUserProfile(data) {
       return data.keys().hasAll([
           'uid', 'username', 'displayName', 'avatarId', 'customAvatarUrl',
-          'xp', 'streak', 'lessonsCompleted', 'correctAnswers', 'totalAnswers',
+          'xp', 'streak', 'streakFreezeActive', 'streakFreezeProtectedDate',
+          'lessonsCompleted', 'correctAnswers', 'totalAnswers',
           'dailyXp', 'dailyLessons', 'lastActiveDate', 'dailyGoal', 'difficulty',
           'soundEnabled', 'voiceEnabled', 'voiceSpeed', 'notificationsEnabled',
           'darkMode', 'uiLanguage', 'unlockedLevels', 'completedLessons',
@@ -53,7 +54,8 @@ service cloud.firestore {
         ]) &&
         data.keys().hasOnly([
           'uid', 'username', 'displayName', 'avatarId', 'customAvatarUrl',
-          'xp', 'streak', 'lessonsCompleted', 'correctAnswers', 'totalAnswers',
+          'xp', 'streak', 'streakFreezeActive', 'streakFreezeProtectedDate',
+          'lessonsCompleted', 'correctAnswers', 'totalAnswers',
           'dailyXp', 'dailyLessons', 'lastActiveDate', 'dailyGoal', 'difficulty',
           'soundEnabled', 'voiceEnabled', 'voiceSpeed', 'notificationsEnabled',
           'darkMode', 'uiLanguage', 'unlockedLevels', 'completedLessons',
@@ -66,6 +68,8 @@ service cloud.firestore {
         data.customAvatarUrl is string && data.customAvatarUrl.size() <= 512 &&
         data.xp is int && data.xp >= 0 && data.xp <= 10000000 &&
         data.streak is int && data.streak >= 0 && data.streak <= 10000 &&
+        data.streakFreezeActive is bool &&
+        data.streakFreezeProtectedDate is string && data.streakFreezeProtectedDate.size() <= 20 &&
         data.lessonsCompleted is int && data.lessonsCompleted >= 0 && data.lessonsCompleted <= 20000 &&
         data.correctAnswers is int && data.correctAnswers >= 0 && data.correctAnswers <= 1000000 &&
         data.totalAnswers is int && data.totalAnswers >= 0 && data.totalAnswers <= 1000000 &&
@@ -140,10 +144,16 @@ service cloud.firestore {
           ]) ||
           // Action: Record Learning Progress, Stars & Level Unlocks
           incoming().diff(existing()).affectedKeys().hasOnly([
-            'xp', 'streak', 'lessonsCompleted', 'correctAnswers', 'totalAnswers',
+            'xp', 'streak', 'streakFreezeActive', 'streakFreezeProtectedDate',
+            'lessonsCompleted', 'correctAnswers', 'totalAnswers',
             'dailyXp', 'dailyLessons', 'lastActiveDate', 'unlockedLevels',
             'completedLessons', 'lessonStars', 'masteredWords', 'weeklyXp',
             'difficulty', 'updatedAt'
+          ]) ||
+          // Action: Purchase or Auto-Consume Streak Freeze
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'xp', 'streak', 'dailyXp', 'dailyLessons', 'lastActiveDate',
+            'streakFreezeActive', 'streakFreezeProtectedDate', 'updatedAt'
           ])
         );
 

@@ -138,6 +138,8 @@ export interface UserProfileData {
   customAvatarUrl?: string;
   xp: number;
   streak: number;
+  streakFreezeActive: boolean;
+  streakFreezeProtectedDate?: string;
   lessonsCompleted: number;
   correctAnswers: number;
   totalAnswers: number;

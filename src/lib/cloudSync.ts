@@ -62,6 +62,8 @@ function buildCloudProfilePayload(profile: UserProfileData, uid: string) {
     customAvatarUrl: sanitizeCloudAvatarUrl(profile.customAvatarUrl),
     xp: Math.max(0, Math.round(profile.xp || 0)),
     streak: Math.max(0, Math.round(profile.streak || 0)),
+    streakFreezeActive: Boolean(profile.streakFreezeActive),
+    streakFreezeProtectedDate: (profile.streakFreezeProtectedDate || '').slice(0, 20),
     lessonsCompleted: Math.max(0, Math.round(profile.lessonsCompleted || 0)),
     correctAnswers: Math.max(0, Math.round(profile.correctAnswers || 0)),
     totalAnswers: Math.max(0, Math.round(profile.totalAnswers || 0)),
@@ -282,11 +284,32 @@ export async function ensureCloudProfileDoc(
     const snap = await getDoc(userRef);
     if (!snap.exists()) {
       const payload = buildCloudProfilePayload(profile, uid);
-      await setDoc(userRef, {
-        ...payload,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      try {
+        await setDoc(userRef, {
+          ...payload,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (createErr: unknown) {
+        const createCode = (createErr as { code?: string })?.code || '';
+        if (createCode === 'permission-denied') {
+          const {
+            streakFreezeActive: _sfa,
+            streakFreezeProtectedDate: _sfpd,
+            ...legacyPayload
+          } = payload;
+          await setDoc(userRef, {
+            ...legacyPayload,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          console.warn(
+            'Created cloud profile without streakFreeze fields; deploy updated firestore.rules to enable cloud streak freeze sync.'
+          );
+          return;
+        }
+        throw createErr;
+      }
     }
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code || '';
@@ -386,7 +409,7 @@ export async function syncCloudProgress(
     await ensureCloudProfileDoc(profile);
     const payload = buildCloudProfilePayload(profile, uid);
     const userRef = doc(db, 'users', uid);
-    await updateDoc(userRef, {
+    const baseUpdate = {
       xp: payload.xp,
       streak: payload.streak,
       lessonsCompleted: payload.lessonsCompleted,
@@ -402,10 +425,64 @@ export async function syncCloudProgress(
       weeklyXp: payload.weeklyXp,
       difficulty: payload.difficulty,
       updatedAt: serverTimestamp(),
-    });
+    };
+    try {
+      await updateDoc(userRef, {
+        ...baseUpdate,
+        streakFreezeActive: payload.streakFreezeActive,
+        streakFreezeProtectedDate: payload.streakFreezeProtectedDate,
+      });
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'permission-denied') {
+        await updateDoc(userRef, baseUpdate);
+        console.warn(
+          'Synced cloud progress without streakFreeze fields; deploy updated firestore.rules.'
+        );
+        return true;
+      }
+      throw err;
+    }
     return true;
   } catch (err) {
     console.warn('Cloud progress sync failed:', err);
+    return false;
+  }
+}
+
+export async function syncCloudStreakFreeze(
+  profile: UserProfileData
+): Promise<boolean> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return false;
+  try {
+    await ensureCloudProfileDoc(profile);
+    const payload = buildCloudProfilePayload(profile, uid);
+    const userRef = doc(db, 'users', uid);
+    try {
+      await updateDoc(userRef, {
+        xp: payload.xp,
+        streak: payload.streak,
+        dailyXp: payload.dailyXp,
+        dailyLessons: payload.dailyLessons,
+        lastActiveDate: payload.lastActiveDate,
+        streakFreezeActive: payload.streakFreezeActive,
+        streakFreezeProtectedDate: payload.streakFreezeProtectedDate,
+        updatedAt: serverTimestamp(),
+      });
+      return true;
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'permission-denied') {
+        console.warn(
+          'Cloud streak freeze sync skipped until updated firestore.rules are deployed.'
+        );
+        return false;
+      }
+      throw err;
+    }
+  } catch (err) {
+    console.warn('Cloud streak freeze sync failed:', err);
     return false;
   }
 }
@@ -516,6 +593,9 @@ export function mergeLocalAndCloudProfiles(
     customAvatarUrl: local.customAvatarUrl || cloud.customAvatarUrl || undefined,
     xp: Math.max(local.xp || 0, cloud.xp || 0),
     streak: Math.max(local.streak || 0, cloud.streak || 0),
+    streakFreezeActive: Boolean(cloud.streakFreezeActive ?? local.streakFreezeActive),
+    streakFreezeProtectedDate:
+      cloud.streakFreezeProtectedDate || local.streakFreezeProtectedDate || '',
     lessonsCompleted: Math.max(local.lessonsCompleted || 0, cloud.lessonsCompleted || 0),
     correctAnswers: Math.max(local.correctAnswers || 0, cloud.correctAnswers || 0),
     totalAnswers: Math.max(local.totalAnswers || 0, cloud.totalAnswers || 0),

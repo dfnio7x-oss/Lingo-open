@@ -1,7 +1,14 @@
-// Ultra-calm, soothing Web Audio API acoustic chimes + gentle SpeechSynthesis pronunciation
+// Ultra-calm Web Audio API chimes + hybrid pronunciation:
+// - Instant browser SpeechSynthesis for single words
+// - Realistic server-side Gemini TTS (/api/tts) with caching for sentences & examples
+// - Automatic blank-space parser (pauses cleanly instead of reading underscores)
 
 let audioCtx: AudioContext | null = null;
 let cachedVoices: SpeechSynthesisVoice[] = [];
+let activeSpeakToken = 0;
+let activeHtmlAudio: HTMLAudioElement | null = null;
+const ttsAudioCache = new Map<string, string>();
+const MAX_TTS_CACHE = 120;
 
 if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
   const loadVoices = () => {
@@ -48,7 +55,6 @@ function playCalmTone(
   osc.type = 'sine';
   osc.frequency.setValueAtTime(freq, now);
 
-  // Subtle soft octave-below warmth instead of bright overtones
   warmOver.type = 'sine';
   warmOver.frequency.setValueAtTime(freq * 0.5, now);
   overGain.gain.setValueAtTime(0.14, now);
@@ -101,6 +107,131 @@ function pickBestEnglishVoice(): SpeechSynthesisVoice | undefined {
     voices.find((v) => v.lang === 'en-GB') ||
     voices.find((v) => v.lang.startsWith('en'))
   );
+}
+
+export function splitAroundBlanks(rawText: string): string[] {
+  if (!rawText) return [];
+  const rawParts = rawText.split(/_{2,}|\[_{2,}\]|\[\.\.\.\]|…/g);
+  return rawParts
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter((part) => part.length > 0 && !/^[.,!?;:'"()\-–—]+$/.test(part));
+}
+
+function shouldUseRealisticAiVoice(fullText: string, segments: string[]): boolean {
+  const combined = segments.join(' ').trim();
+  const wordCount = combined.split(/\s+/).filter(Boolean).length;
+  return wordCount >= 3 || /[.!?]/.test(fullText) || segments.length > 1;
+}
+
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchGeminiTtsDataUrl(text: string): Promise<string | null> {
+  const key = text.trim();
+  if (!key) return null;
+  const cached = ttsAudioCache.get(key);
+  if (cached) return cached;
+
+  try {
+    const res = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: key }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { audioBase64?: string; mimeType?: string };
+    if (!data.audioBase64) return null;
+    const mime = data.mimeType || 'audio/wav';
+    const dataUrl = `data:${mime};base64,${data.audioBase64}`;
+    if (ttsAudioCache.size >= MAX_TTS_CACHE) {
+      const oldestKey = ttsAudioCache.keys().next().value;
+      if (oldestKey) ttsAudioCache.delete(oldestKey);
+    }
+    ttsAudioCache.set(key, dataUrl);
+    return dataUrl;
+  } catch {
+    return null;
+  }
+}
+
+function playDataUrlAudio(dataUrl: string, rate: number, token: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || token !== activeSpeakToken) {
+      resolve(false);
+      return;
+    }
+    try {
+      const audio = new Audio(dataUrl);
+      audio.playbackRate = Math.max(0.5, Math.min(1.5, rate));
+      audio.volume = 0.95;
+      activeHtmlAudio = audio;
+
+      const finish = (ok: boolean) => {
+        if (activeHtmlAudio === audio) {
+          activeHtmlAudio = null;
+        }
+        resolve(ok);
+      };
+
+      audio.onended = () => finish(true);
+      audio.onerror = () => finish(false);
+      void audio.play().catch(() => finish(false));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+function playBrowserSpeechSegment(
+  text: string,
+  rate: number,
+  token: number
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (
+      typeof window === 'undefined' ||
+      !('speechSynthesis' in window) ||
+      token !== activeSpeakToken
+    ) {
+      resolve();
+      return;
+    }
+
+    try {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = Math.max(0.5, Math.min(1.5, rate));
+      utterance.volume = 0.9;
+      utterance.pitch = 1.0;
+      const preferred = pickBestEnglishVoice();
+      if (preferred) {
+        utterance.voice = preferred;
+      }
+
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
+      const safetyTimer = setTimeout(done, 6000);
+      utterance.onend = () => {
+        clearTimeout(safetyTimer);
+        done();
+      };
+      utterance.onerror = () => {
+        clearTimeout(safetyTimer);
+        done();
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      playCalmTone(493.88, 0.18, 0, 0.09);
+      resolve();
+    }
+  });
 }
 
 export const VOICE_SPEED_OPTIONS = [
@@ -180,22 +311,61 @@ export const soundEngine = {
     arpeggio.forEach((n) => playCalmTone(n.f, n.d, n.t, 0.115, 1100));
   },
 
-  speakWord(text: string, enabled = true, rate = 0.9) {
-    if (!enabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      utterance.rate = Math.max(0.5, Math.min(1.5, rate));
-      utterance.volume = 0.9;
-      utterance.pitch = 1.0;
-      const preferred = pickBestEnglishVoice();
-      if (preferred) {
-        utterance.voice = preferred;
+  stopSpeech() {
+    activeSpeakToken += 1;
+    if (activeHtmlAudio) {
+      try {
+        activeHtmlAudio.pause();
+        activeHtmlAudio.currentTime = 0;
+      } catch {
+        // Ignore
       }
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      playCalmTone(493.88, 0.18, 0, 0.09);
+      activeHtmlAudio = null;
     }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // Ignore
+      }
+    }
+  },
+
+  speakWord(text: string, enabled = true, rate = 0.9) {
+    if (!enabled || typeof window === 'undefined') return;
+    this.stopSpeech();
+    const token = activeSpeakToken;
+    const segments = splitAroundBlanks(text);
+    if (segments.length === 0) return;
+
+    const useAiVoice = shouldUseRealisticAiVoice(text, segments);
+    const clampedRate = Math.max(0.5, Math.min(1.5, rate));
+
+    const runSequence = async () => {
+      for (let i = 0; i < segments.length; i++) {
+        if (token !== activeSpeakToken) return;
+        const segment = segments[i];
+
+        let playedViaAi = false;
+        if (useAiVoice) {
+          const dataUrl = await fetchGeminiTtsDataUrl(segment);
+          if (token !== activeSpeakToken) return;
+          if (dataUrl) {
+            playedViaAi = await playDataUrlAudio(dataUrl, clampedRate, token);
+          }
+        }
+
+        if (!playedViaAi) {
+          if (token !== activeSpeakToken) return;
+          await playBrowserSpeechSegment(segment, clampedRate, token);
+        }
+
+        if (i < segments.length - 1 && token === activeSpeakToken) {
+          await waitMs(380);
+        }
+      }
+    };
+
+    void runSequence();
   },
 };

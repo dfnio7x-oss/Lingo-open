@@ -595,9 +595,26 @@ export function LessonPlayer({
                     <div className="space-y-5">
                       <div
                         dir="ltr"
-                        className="font-latin rounded-2xl bg-[var(--bg-surface-muted)] p-5 text-base sm:text-lg font-semibold leading-relaxed text-[var(--text-primary)] text-left"
+                        className="font-latin rounded-2xl bg-[var(--bg-surface-muted)] p-5 text-base sm:text-lg font-semibold leading-relaxed text-[var(--text-primary)] text-left flex items-center justify-between gap-3"
                       >
-                        {currentExercise.sentenceWithBlank}
+                        <span>{currentExercise.sentenceWithBlank}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const textToSpeak =
+                              checkedState !== 'idle' && currentExercise.correctAnswer
+                                ? (currentExercise.sentenceWithBlank || '').replace(
+                                    /_{2,}/g,
+                                    currentExercise.correctAnswer
+                                  )
+                                : currentExercise.sentenceWithBlank || '';
+                            soundEngine.speakWord(textToSpeak, true, voiceSpeed);
+                          }}
+                          aria-label={lp.listenBtn}
+                          className="w-10 h-10 rounded-xl bg-[var(--bg-surface)] text-[#1CB0F6] flex items-center justify-center shrink-0 cursor-pointer shadow-xs"
+                        >
+                          <Volume2 className="w-4 h-4" />
+                        </button>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         {currentExercise.options?.map((opt) => {
